@@ -72,16 +72,13 @@ int main(int argc, char const *argv[]){
 
     int** w = new int*[L];
     double** t = new double*[L];
-    int** rs = new int*[L]; // οι L πινακες που θα εχουν τα r για καθε map
 
     for (int i = 0 ; i < L ; i++){
         w[i] = new int[K];
         t[i] = new double[K];
-        rs[i] = new int[K];
         for (int j = 0 ; j < K ; j++){
             w[i][j] = rand()%5 + 2; // τυχαιο για καθε μαπ απο 2 εως 6
             t[i][j] = ( rand()%(w[i][j]*1000) )/1000.0; // τυχαιο για καθε μαπ στο [0,w)
-            rs[i][j] = rand();  // τα r ειναι τυχαια
         }
     }
 
@@ -94,40 +91,42 @@ int main(int argc, char const *argv[]){
         std::cin >> output_file;
     }
 
+    std::map<int, int> hypervalues; // empty map container
+    std::unordered_multimap<long, int> hypercube; // empty multimap container
+    
+    for (int i = 0 ; i < NO_IMAGES ; i++){
+        long key = 0;
+        int bit = 1;
+        for (int j = 0 ; j < dt ; j++){
+            int zero_or_one;
+            int hi = rand() % K;   // Ποια h θα επιλεξουμε
+            int l = rand() % L;
+            int num = h(pixels[i], w[l][hi], t[l][hi], hi, DIMENSION, l);
+            auto itr = hypervalues.find(num);
+            if (itr == hypervalues.end()){      // Αν δεν υπαρχει μες στο map
+                zero_or_one = rand() % 2;
+                hypervalues.insert({ num, zero_or_one });
+            }
+            else{
+                zero_or_one = itr->second;
+            }
+            key += zero_or_one * bit;
+            bit *= 2;
+        }
+        
+        hypercube.insert({key,i});
+    }
+
+    // Create Output file to write
+    std::ofstream Output(output_file);
+
     while (1){
         // Read from query file
         readfile(query_file, queries, NO_QUERIES, DIMENSION);
 
-        // Create Output file to write
-        std::ofstream Output(output_file);
+        auto startCube = std::chrono::high_resolution_clock::now();
         
         int query = 0;
-
-        std::map<int, int> hypervalues; // empty map container
-        std::unordered_multimap<long, int> hypercube; // empty multimap container
-        
-        for (int i = 0 ; i < NO_IMAGES ; i++){
-            long key = 0;
-            int bit = 1;
-            for (int j = 0 ; j < dt ; j++){
-                int zero_or_one;
-                int hi = rand() % K;   // Ποια h θα επιλεξουμε
-                int l = rand() % L;
-                int num = h(pixels[i], w[l][hi], t[l][hi], hi, DIMENSION, l);
-                auto itr = hypervalues.find(num);
-                if (itr == hypervalues.end()){      // Αν δεν υπαρχει μες στο map
-                    zero_or_one = rand() % 2;
-                    hypervalues.insert({ num, zero_or_one });
-                }
-                else{
-                    zero_or_one = itr->second;
-                }
-                key += zero_or_one * bit;
-                bit *= 2;
-            }
-            
-            hypercube.insert({key,i});
-        }
 
         long query_key = 0;
         int bit = 1;
@@ -194,8 +193,7 @@ int main(int argc, char const *argv[]){
         while (countCubeElementsRange < M && countVerticesRange < probes){
             for (auto it = itr.first; it != itr.second; it++) {
                 countCubeElementsRange++;
-                double ttt = dist(pixels[it->second],queries[query],2,DIMENSION);std::cout << "lalalalala " << ttt << std::endl;
-                if( ttt >= R ) continue;
+                if( dist(pixels[it->second],queries[query],2,DIMENSION) >= R ) continue;
                 
                 rangeSearchCube->insertionsort_insert(it->second);
             }
@@ -221,33 +219,50 @@ int main(int argc, char const *argv[]){
             
         }
 
+        auto stopCube = std::chrono::high_resolution_clock::now();
+
+        auto startReal = std::chrono::high_resolution_clock::now();
+
         Neibs* real_neighbs = new Neibs(pixels, queries, DIMENSION, N, query, &dist);
         for (int i = 0 ; i < NO_IMAGES ; i++){
             real_neighbs->insertionsort_insert(i);
         }
 
-        std::cout << "Query: " << query << std::endl;
+        auto stopReal = std::chrono::high_resolution_clock::now();
+
+        Output << "Query: " << query << std::endl;
 
         for (int i = 0 ; i < N ; i++){
-            std::cout << "HyperCube Nearest neighbor-" << i + 1 << ": " << cube_neibs->givenn(i) << std::endl;
-            std::cout << "distance HyperCube: " << cube_neibs->givedist(i) << std::endl;
-            std::cout << "distanceTrue: " << real_neighbs->givedist(i) << std::endl;
+            Output << "HyperCube Nearest neighbor-" << i + 1 << ": " << cube_neibs->givenn(i) << std::endl;
+            Output << "distance HyperCube: " << cube_neibs->givedist(i) << std::endl;
+            Output << "distanceTrue: " << real_neighbs->givedist(i) << std::endl;
         }
+
+        auto durationCube = std::chrono::duration_cast<std::chrono::milliseconds>(stopCube - startCube);
+        auto durationReal = std::chrono::duration_cast<std::chrono::milliseconds>(stopReal - startReal);
+
+        Output << "tCube: " << durationCube.count() << " milliseconds" << std::endl;
+        Output << "tTrue: " << durationReal.count() << " milliseconds" << std::endl;
 
         int rangecount = rangeSearchCube->give_size();
-        std::cout << "R-near neighbors: " << rangecount << std::endl;
+        Output << "R-near neighbors: " << rangecount << std::endl;
         for (int i = 0 ; i < rangecount ; i++){
-            std::cout << rangeSearchCube->givenn(i) << std::endl;
+            Output << rangeSearchCube->givenn(i) << std::endl;
         }
 
-        // Close Output file
-        Output.close();
+        
+
+        delete cube_neibs;
+        delete rangeSearchCube;
+        delete real_neighbs;
 
         std::cout << "Type quit to stop or a different query file name to rerun it with" << std::endl;
         std::cin >> query_file;
         if (query_file == "quit") break;
     }
-    
+
+    // Close Output file
+    Output.close();
     // Deallocations
     for (int i = 0 ; i < NO_IMAGES ; i++){
         delete[] pixels[i];
@@ -257,12 +272,10 @@ int main(int argc, char const *argv[]){
     for (int i = 0 ; i < L ; i++){
         delete[] w[i];
         delete[] t[i];
-        delete[] rs[i];
         // delete mm[i];
     }
     delete[] w;
     delete[] t;
-    delete[] rs;
 
     return 0;
 }

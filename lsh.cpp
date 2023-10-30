@@ -100,12 +100,14 @@ int main(int argc, char const *argv[]){
         std::cin >> output_file;
     }
 
+    // Create Output file to write
+    std::ofstream Output(output_file);
+
     while (1){
         // Read from query file
         readfile(query_file, queries, NO_QUERIES, DIMENSION);
 
-        // Create Output file to write
-        std::ofstream Output(output_file);
+        auto startLSH = std::chrono::high_resolution_clock::now();
         
         int query = 0;
         Neibs* lsh = new Neibs(pixels, queries, DIMENSION, N, query, &dist);
@@ -147,26 +149,35 @@ int main(int argc, char const *argv[]){
             }
         }
 
+        auto stopLSH = std::chrono::high_resolution_clock::now();
+
+        auto startReal = std::chrono::high_resolution_clock::now();
+
         Neibs* real_neighbs = new Neibs(pixels, queries, DIMENSION, N, query, &dist);
         for (int i = 0 ; i < NO_IMAGES ; i++){
             real_neighbs->insertionsort_insert(i);
         }
 
-        std::cout << "Query: " << query << std::endl;
+        auto stopReal = std::chrono::high_resolution_clock::now();
+
+        Output << "Query: " << query << std::endl;
         for (int i = 0 ; i < N ; i++){
-            std::cout << "Nearest neighbor-" << i + 1 << ": " << lsh->givenn(i) << std::endl;
-            std::cout << "distanceLSH: " << lsh->givedist(i) << std::endl;
-            std::cout << "distanceTrue: " << real_neighbs->givedist(i) << std::endl;
+            Output << "Nearest neighbor-" << i + 1 << ": " << lsh->givenn(i) << std::endl;
+            Output << "distanceLSH: " << lsh->givedist(i) << std::endl;
+            Output << "distanceTrue: " << real_neighbs->givedist(i) << std::endl;
         }
+
+        auto durationLSH = std::chrono::duration_cast<std::chrono::milliseconds>(stopLSH - startLSH);
+        auto durationReal = std::chrono::duration_cast<std::chrono::milliseconds>(stopReal - startReal);
+
+        Output << "tLSH: " << durationLSH.count() << " milliseconds" << std::endl;
+        Output << "tTrue: " << durationReal.count() << " milliseconds" << std::endl;
 
         int rangecount = rangeSearch->give_size();
-        std::cout << "R-near Neighbors: " << rangecount << std::endl;
+        Output << "R-near Neighbors: " << rangecount << std::endl;
         for (int i = 0 ; i < rangecount ; i++){
-            std::cout << rangeSearch->givenn(i) << std::endl;
+            Output << rangeSearch->givenn(i) << std::endl;
         }
-
-        // Close Output file
-        Output.close();
 
         delete lsh;
         delete rangeSearch;
@@ -177,6 +188,9 @@ int main(int argc, char const *argv[]){
         if (query_file == "quit") break;
     }
     
+    // Close Output file
+    Output.close();
+
     // Deallocations
     for (int i = 0 ; i < NO_IMAGES ; i++){
         delete[] pixels[i];
