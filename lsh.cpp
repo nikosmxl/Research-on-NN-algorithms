@@ -168,6 +168,10 @@ int main(int argc, char const *argv[]){
         // Close Output file
         Output.close();
 
+        delete lsh;
+        delete rangeSearch;
+        delete real_neighbs;
+
         std::cout << "Type quit to stop or a different query file name to rerun it with" << std::endl;
         std::cin >> query_file;
         if (query_file == "quit") break;
