@@ -6,6 +6,50 @@
 #include "generals.h"
 #include "lsh_func.h"
 
+void lsh_knn(int** pixels, std::unordered_multimap<int, int>** mm, Neibs<int>* lsh, int** w, double** t, int** rs, long* id, int query, int L, int K, long M, int NO_IMAGES, int DIMENSION){
+    int countLSH = 0;
+    for(int l = 0; l < L; l++){
+        int key = g(pixels, w[l], t[l], rs[l], id, query, K, M, NO_IMAGES/8, DIMENSION, l);
+        auto itr = mm[l]->equal_range(key);
+        for (auto it = itr.first; it != itr.second; it++) {
+            lsh->insertionsort_insert(it->second);
+            countLSH++;
+            if( countLSH > 10*L ){
+                break;
+            }
+        }
+        
+        if( countLSH > 10*L ){
+            break;
+        }
+    }
+}
+
+void lsh_rangeSearch(int** pixels, int** queries, std::unordered_multimap<int, int>** mm, Neibs<int>* rangeSearch, int** w, double** t, int** rs, long* id, int query, int L, int K, long M, int NO_IMAGES, int DIMENSION, float R){
+    int countRange = 0;
+    for(int l = 0; l < L; l++){
+        int key = g(pixels, w[l], t[l], rs[l], id, query, K, M, NO_IMAGES/8, DIMENSION, l);
+        auto itr = mm[l]->equal_range(key);
+        auto it = itr.first;
+        for (int i = 0; i != mm[l]->count(key) - 1; i++) {
+            countRange++;
+            if (it->second == query){
+                if (++it == itr.second) break;
+            }
+            if ( dist(pixels[it->second],queries[query],2,DIMENSION) >= R ) continue;
+                rangeSearch->insertionsort_insert(it->second);
+            if( countRange > 20*L ){
+                break;
+            }
+            it++;
+        }
+        
+        if( countRange > 20*L ){
+            break;
+        }
+    }
+}
+
 int main(int argc, char const *argv[]){
     std::string input_file;
     std::string output_file;
@@ -46,22 +90,12 @@ int main(int argc, char const *argv[]){
     if (input_file.empty()){
         std::cout << "Enter input file: ";
         std::cin >> input_file;
-        std::cout << "Preprocessing the data..." << std::endl;
     }
+
+    std::cout << "Preprocessing the data..." << std::endl;
 
     // Pixel array
-    int** pixels = new int*[NO_IMAGES];
-    int** queries = new int*[NO_QUERIES];
-
-    for (int i = 0 ; i < NO_IMAGES ; i++){
-        pixels[i] = new int[DIMENSION];
-    }
-
-    for (int i = 0 ; i < NO_QUERIES ; i++){
-        queries[i] = new int[DIMENSION];
-    }
-
-    readfile(input_file, pixels, NO_IMAGES, DIMENSION);
+    int** pixels = readfile<int>(input_file, NO_IMAGES, DIMENSION);
 
     srand(time(NULL));
 
@@ -104,56 +138,27 @@ int main(int argc, char const *argv[]){
     std::ofstream Output(output_file);
 
     while (1){
+        std::cout << "Processing the data..." << std::endl;
+
         // Read from query file
-        readfile(query_file, queries, NO_QUERIES, DIMENSION);
+        int** queries = readfile<int>(query_file, NO_QUERIES, DIMENSION);
 
         auto startLSH = std::chrono::high_resolution_clock::now();
         
-        int query = 0;
-        Neibs* lsh = new Neibs(pixels, queries, DIMENSION, N, query, &dist);
-        
-        int countLSH = 0;
-        for(int l = 0; l < L; l++){
-            int key = g(pixels, w[l], t[l], rs[l], id, query, K, M, NO_IMAGES/8, DIMENSION, l);
-            auto itr = mm[l]->equal_range(key);
-            for (auto it = itr.first; it != itr.second; it++) {
-                lsh->insertionsort_insert(it->second);
-                countLSH++;
-                if( countLSH > 10*L ){
-                    break;
-                }
-            }
-            
-            if( countLSH > 10*L ){
-                    break;
-            }
-        }
+        int query = rand() % NO_QUERIES;
+        Neibs<int>* lsh = new Neibs<int>(pixels, queries, DIMENSION, N, query, &dist);
 
-        Neibs* rangeSearch = new Neibs(pixels, queries, DIMENSION, NO_IMAGES, query, &dist);
-        
-        int countRange = 0;
-        for(int l = 0; l < L; l++){
-            int key = g(pixels, w[l], t[l], rs[l], id, query, K, M, NO_IMAGES/8, DIMENSION, l);
-            auto itr = mm[l]->equal_range(key);
-            for (auto it = itr.first; it != itr.second; it++) {
-                countRange++;
-                if ( dist(pixels[it->second],queries[query],2,DIMENSION) >= R ) continue;
-                    rangeSearch->insertionsort_insert(it->second);
-                if( countRange > 20*L ){
-                    break;
-                }
-            }
-            
-            if( countRange > 20*L ){
-                break;
-            }
-        }
+        lsh_knn(pixels, mm, lsh, w, t, rs, id, query, L, K, M, NO_IMAGES, DIMENSION);
+
+        Neibs<int>* rangeSearch = new Neibs<int>(pixels, queries, DIMENSION, NO_IMAGES, query, &dist);
+
+        lsh_rangeSearch(pixels, queries, mm, rangeSearch, w, t, rs, id, query, L, K, M, NO_IMAGES, DIMENSION, R);
 
         auto stopLSH = std::chrono::high_resolution_clock::now();
 
         auto startReal = std::chrono::high_resolution_clock::now();
 
-        Neibs* real_neighbs = new Neibs(pixels, queries, DIMENSION, N, query, &dist);
+        Neibs<int>* real_neighbs = new Neibs<int>(pixels, queries, DIMENSION, N, query, &dist);
         for (int i = 0 ; i < NO_IMAGES ; i++){
             real_neighbs->insertionsort_insert(i);
         }

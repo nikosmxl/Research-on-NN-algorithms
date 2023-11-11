@@ -5,6 +5,7 @@
 #include <bits/stdc++.h>
 #include "generals.h"
 #include "lsh_func.h"
+#include "cube_func.h"
 
 int main(int argc, char const *argv[]){
     std::string input_file;
@@ -51,22 +52,12 @@ int main(int argc, char const *argv[]){
     if (input_file.empty()){
         std::cout << "Enter input file: ";
         std::cin >> input_file;
-        std::cout << "Preprocessing the data..." << std::endl;
     }
+
+    std::cout << "Preprocessing the data..." << std::endl;
 
     // Pixel array
-    int** pixels = new int*[NO_IMAGES];
-    int** queries = new int*[NO_QUERIES];
-
-    for (int i = 0 ; i < NO_IMAGES ; i++){
-        pixels[i] = new int[DIMENSION];
-    }
-
-    for (int i = 0 ; i < NO_QUERIES ; i++){
-        queries[i] = new int[DIMENSION];
-    }
-
-    readfile(input_file, pixels, NO_IMAGES, DIMENSION);
+    int** pixels = readfile<int>(input_file, NO_IMAGES, DIMENSION);
 
     srand(time(NULL));
 
@@ -94,136 +85,38 @@ int main(int argc, char const *argv[]){
     std::map<int, int> hypervalues; // empty map container
     std::unordered_multimap<long, int> hypercube; // empty multimap container
     
-    for (int i = 0 ; i < NO_IMAGES ; i++){
-        long key = 0;
-        int bit = 1;
-        for (int j = 0 ; j < dt ; j++){
-            int zero_or_one;
-            int hi = rand() % K;   // Ποια h θα επιλεξουμε
-            int l = rand() % L;
-            int num = h(pixels[i], w[l][hi], t[l][hi], hi, DIMENSION, l);
-            auto itr = hypervalues.find(num);
-            if (itr == hypervalues.end()){      // Αν δεν υπαρχει μες στο map
-                zero_or_one = rand() % 2;
-                hypervalues.insert({ num, zero_or_one });
-            }
-            else{
-                zero_or_one = itr->second;
-            }
-            key += zero_or_one * bit;
-            bit *= 2;
-        }
-        
-        hypercube.insert({key,i});
-    }
+    preprocess_cube(pixels, hypervalues, hypercube, w, t, L, K, dt, NO_IMAGES, DIMENSION);
 
     // Create Output file to write
     std::ofstream Output(output_file);
 
     while (1){
+        std::cout << "Processing the data..." << std::endl;
+
         // Read from query file
-        readfile(query_file, queries, NO_QUERIES, DIMENSION);
+        int** queries = readfile<int>(query_file, NO_QUERIES, DIMENSION);
 
         auto startCube = std::chrono::high_resolution_clock::now();
         
-        int query = 0;
+        int query = rand() % NO_QUERIES;
 
-        long query_key = 0;
-        int bit = 1;
-        for (int j = 0 ; j < dt ; j++){
-            int zero_or_one;
-            int hi = rand() % K;   // Ποια h θα επιλεξουμε
-            int l = rand() % L;
-            int num = h(queries[query], w[l][hi], t[l][hi], hi, DIMENSION, l); 
-            auto itr = hypervalues.find(num);
-            if (itr != hypervalues.end()){      // Αν δεν υπαρχει μες στο map
-                zero_or_one = rand() % 2;
-                hypervalues.insert({ num, zero_or_one });
-            }
-            else{
-                zero_or_one = itr->second;
-            }
-            query_key += zero_or_one * bit;
-            bit *= 2;
-        }
+        long query_key = query_key_init(queries, hypervalues, w, t, query, dt, K, L, DIMENSION);
         
-        auto itr = hypercube.equal_range(query_key);
-        int countVertices = 0;
-        int countCubeElements = 0;
-        int hamming_dist_wanted = 0;
-
-        std::bitset<32> binary_query_key(query_key); // Convert p to binary representation
-        int i = 0;
-
         // Hypercube knn
-        Neibs* cube_neibs = new Neibs(pixels, queries, DIMENSION, N, query, &dist);
+        Neibs<int>* cube_neibs = new Neibs<int>(pixels, queries, DIMENSION, N, query, &dist);
 
-        while (countCubeElements < M && countVertices < probes){
-            for (auto it = itr.first; it != itr.second; it++) {
-                cube_neibs->insertionsort_insert(it->second);
-                countCubeElements++;
-            }
-            countVertices++;
-
-            if (i == query_key){
-                i++;
-                i = i % dt;
-            }
-            if (i == 0) hamming_dist_wanted++;
-            while (1){
-                std::bitset<32> binary_i(i); // Convert num to binary representation
-                int differingBits = (binary_query_key ^ binary_i).count(); // Count differing bits
-                if (differingBits == hamming_dist_wanted){
-                    itr = hypercube.equal_range(i);
-                    break;
-                }
-
-                i++;
-                i = i % dt;
-                if (i == 0) hamming_dist_wanted++;
-            }
-            
-        }
+        cube_knn(cube_neibs, hypervalues, hypercube, query_key, dt, M, probes);
 
         // Hypercube Range Search
-        Neibs* rangeSearchCube = new Neibs(pixels, queries, DIMENSION, NO_IMAGES, query, &dist);
-        int countVerticesRange = 0;
-        int countCubeElementsRange = 0;
-        int hamming_dist_wantedRange = 0;
-        while (countCubeElementsRange < M && countVerticesRange < probes){
-            for (auto it = itr.first; it != itr.second; it++) {
-                countCubeElementsRange++;
-                if( dist(pixels[it->second],queries[query],2,DIMENSION) >= R ) continue;
-                
-                rangeSearchCube->insertionsort_insert(it->second);
-            }
-            countVerticesRange++;
-
-            if (i == query_key){
-                i++;
-                i = i % dt;
-            }
-            if (i == 0) hamming_dist_wantedRange++;
-            while (1){
-                std::bitset<32> binary_i(i); // Convert num to binary representation
-                int differingBits = (binary_query_key ^ binary_i).count(); // Count differing bits
-                if (differingBits == hamming_dist_wantedRange){
-                    itr = hypercube.equal_range(i);
-                    break;
-                }
-
-                i++;
-                i = i % dt;
-                if (i == 0) hamming_dist_wantedRange++;
-            }
-            
-        }
+        Neibs<int>* rangeSearchCube = new Neibs<int>(pixels, queries, DIMENSION, NO_IMAGES, query, &dist);
+        
+        cube_rangeSearch(rangeSearchCube, hypervalues, hypercube, query_key, dt, M, probes, pixels, queries, query, DIMENSION, R);
 
         auto stopCube = std::chrono::high_resolution_clock::now();
 
         auto startReal = std::chrono::high_resolution_clock::now();
 
-        Neibs* real_neighbs = new Neibs(pixels, queries, DIMENSION, N, query, &dist);
+        Neibs<int>* real_neighbs = new Neibs<int>(pixels, queries, DIMENSION, N, query, &dist);
         for (int i = 0 ; i < NO_IMAGES ; i++){
             real_neighbs->insertionsort_insert(i);
         }
@@ -249,8 +142,6 @@ int main(int argc, char const *argv[]){
         for (int i = 0 ; i < rangecount ; i++){
             Output << rangeSearchCube->givenn(i) << std::endl;
         }
-
-        
 
         delete cube_neibs;
         delete rangeSearchCube;
