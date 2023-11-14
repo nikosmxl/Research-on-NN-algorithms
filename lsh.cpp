@@ -6,50 +6,6 @@
 #include "generals.h"
 #include "lsh_func.h"
 
-void lsh_knn(int** pixels, std::unordered_multimap<int, int>** mm, Neibs<int>* lsh, int** w, double** t, int** rs, long* id, int query, int L, int K, long M, int NO_IMAGES, int DIMENSION){
-    int countLSH = 0;
-    for(int l = 0; l < L; l++){
-        int key = g(pixels, w[l], t[l], rs[l], id, query, K, M, NO_IMAGES/8, DIMENSION, l);
-        auto itr = mm[l]->equal_range(key);
-        for (auto it = itr.first; it != itr.second; it++) {
-            lsh->insertionsort_insert(it->second);
-            countLSH++;
-            if( countLSH > 10*L ){
-                break;
-            }
-        }
-        
-        if( countLSH > 10*L ){
-            break;
-        }
-    }
-}
-
-void lsh_rangeSearch(int** pixels, int** queries, std::unordered_multimap<int, int>** mm, Neibs<int>* rangeSearch, int** w, double** t, int** rs, long* id, int query, int L, int K, long M, int NO_IMAGES, int DIMENSION, float R){
-    int countRange = 0;
-    for(int l = 0; l < L; l++){
-        int key = g(pixels, w[l], t[l], rs[l], id, query, K, M, NO_IMAGES/8, DIMENSION, l);
-        auto itr = mm[l]->equal_range(key);
-        auto it = itr.first;
-        for (int i = 0; i != mm[l]->count(key) - 1; i++) {
-            countRange++;
-            if (it->second == query){
-                if (++it == itr.second) break;
-            }
-            if ( dist(pixels[it->second],queries[query],2,DIMENSION) >= R ) continue;
-                rangeSearch->insertionsort_insert(it->second);
-            if( countRange > 20*L ){
-                break;
-            }
-            it++;
-        }
-        
-        if( countRange > 20*L ){
-            break;
-        }
-    }
-}
-
 int main(int argc, char const *argv[]){
     std::string input_file;
     std::string output_file;
@@ -188,6 +144,11 @@ int main(int argc, char const *argv[]){
         delete rangeSearch;
         delete real_neighbs;
 
+        for (int i = 0 ; i < NO_IMAGES ; i++){
+            delete[] queries[i];
+        }
+        delete[] queries;
+
         std::cout << "Type quit to stop or a different query file name to rerun it with" << std::endl;
         std::cin >> query_file;
         if (query_file == "quit") break;
@@ -206,12 +167,11 @@ int main(int argc, char const *argv[]){
         delete[] w[i];
         delete[] t[i];
         delete[] rs[i];
-        // delete mm[i];
+        delete mm[i];
     }
     delete[] w;
     delete[] t;
     delete[] rs;
-
     delete[] id;
 
     return 0;

@@ -63,64 +63,64 @@ class Neibs
         int q;
         double (*distfunc)(T*, T*, int, int);
     public:
-    Neibs(T** pixels, T** qs, int dimension, std::size_t s,int query, double (*func)(T*, T*, int, int)) : p(pixels), queries(qs), DIM(dimension), size(0), maxsize(s), q(query), distfunc(func) {
-        nn = new int[s];
-    }
+        Neibs(T** pixels, T** qs, int dimension, std::size_t s,int query, double (*func)(T*, T*, int, int)) : p(pixels), queries(qs), DIM(dimension), size(0), maxsize(s), q(query), distfunc(func) {
+            nn = new int[s];
+        }
 
-    ~Neibs(){
-        delete[] nn;
-    }
+        ~Neibs(){
+            delete[] nn;
+        }
 
-    int* givenn() const{
-        return nn;
-    }
+        int* givenn() const{
+            return nn;
+        }
 
-    int givenn(int i) const{
-        return nn[i];
-    }
+        int givenn(int i) const{
+            return nn[i];
+        }
 
-    std::size_t give_size() const{
-        return size;
-    }
+        std::size_t give_size() const{
+            return size;
+        }
 
-    void insertionsort_insert(int v){
-        if( size == 0 ){
-            nn[size++] = v;
+        void insertionsort_insert(int v){
+            if( size == 0 ){
+                nn[size++] = v;
+                return;
+            }
+
+            if( size == maxsize ){
+                if( distfunc(queries[q],p[nn[maxsize - 1]], 2, DIM) <= distfunc(queries[q],p[v], 2, DIM) ){
+                    return;
+                }
+            }
+            
+            for(std::size_t i = 0; i < size; i++){
+                if( distfunc(queries[q],p[nn[i]], 2, DIM) > distfunc(queries[q],p[v], 2, DIM) ){ // αν ειναι το v κοντινοτερο σε σχεση με το nn[i]?
+                    int temp = v;
+                    for(std::size_t j = i; j < size; j++){
+                        int temp2 = nn[j];
+                        nn[j] = temp;
+                        temp = temp2;
+                    }
+
+                    if (size < maxsize){
+                        nn[size++] = temp;
+                    }
+                    
+                    return;
+                }
+            }
+            if( size < maxsize){
+                nn[size++] = v;
+                return;
+            }
             return;
         }
 
-        if( size == maxsize ){
-            if( distfunc(queries[q],p[nn[maxsize - 1]], 2, DIM) <= distfunc(queries[q],p[v], 2, DIM) ){
-                return;
-            }
+        double givedist(int i) const{
+            return distfunc(queries[q],p[nn[i]], 2, DIM);
         }
-        
-        for(std::size_t i = 0; i < size; i++){
-            if( distfunc(queries[q],p[nn[i]], 2, DIM) > distfunc(queries[q],p[v], 2, DIM) ){ // αν ειναι το v κοντινοτερο σε σχεση με το nn[i]?
-                int temp = v;
-                for(std::size_t j = i; j < size; j++){
-                    int temp2 = nn[j];
-                    nn[j] = temp;
-                    temp = temp2;
-                }
-
-                if (size < maxsize){
-                    nn[size++] = temp;
-                }
-                
-                return;
-            }
-        }
-        if( size < maxsize){
-            nn[size++] = v;
-            return;
-        }
-        return;
-    }
-
-    double givedist(int i) const{
-        return distfunc(queries[q],p[nn[i]], 2, DIM);
-    }
 };
 
 #endif

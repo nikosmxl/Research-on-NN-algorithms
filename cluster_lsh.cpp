@@ -75,15 +75,9 @@ int main(int argc, char const *argv[]){
         return -1;
     }
 
-    int** pixels = new int*[NO_IMAGES];
+    int** pixels = readfile<int>(input_file, NO_IMAGES, DIMENSION);
 
-    for (int i = 0 ; i < NO_IMAGES ; i++){
-        pixels[i] = new int[DIMENSION];
-    }
-
-    readfile(input_file, pixels, NO_IMAGES, DIMENSION);
-
-    Cluster** clusters = new Cluster*[number_of_clusters];
+    Cluster<int>** clusters = new Cluster<int>*[number_of_clusters];
     int centers[number_of_clusters];
     for (int i = 0 ; i < number_of_clusters ; i++){
         centers[i] = -1;
@@ -96,6 +90,10 @@ int main(int argc, char const *argv[]){
     int** w = new int*[L];
     double** t = new double*[L];
     int** rs = new int*[L]; // οι L πινακες που θα εχουν τα r για καθε map
+    std::unordered_multimap<int, int>* mm[L]; // empty multimap container
+    long* id = new long[NO_IMAGES];
+    bool* assigned = new bool[NO_IMAGES];
+
 
     for (int i = 0 ; i < L ; i++){
         w[i] = new int[K];
@@ -107,9 +105,6 @@ int main(int argc, char const *argv[]){
             rs[i][j] = rand();  // τα r ειναι τυχαια
         }
     }
-
-    std::unordered_multimap<int, int>* mm[L]; // empty multimap container
-    long* id = new long[NO_IMAGES];
 
     for (int l = 0 ; l < L ; l++){
         mm[l] = new std::unordered_multimap<int, int>();
@@ -128,7 +123,6 @@ int main(int argc, char const *argv[]){
         }
     }
 
-    bool* assigned = new bool[NO_IMAGES];
     for (int i = 0 ; i < NO_IMAGES ; i++){
         assigned[i] = false;
     }
@@ -151,56 +145,11 @@ int main(int argc, char const *argv[]){
 
     auto start = std::chrono::high_resolution_clock::now();
     int* clustindexforps = new int[NO_IMAGES];
-    
-    double changefactor = 100;
-    while (changefactor <= stopfactor){        // Οσο υπαρχει διαφορα πανω απο 5% σε σχεση με την τελευταια κατασταση συνεχιζουμε να ενημερωνουμε
-        int sumofchanged = 0;           // Αθροισμα διανυσματων που αλλαξαν cluster
-        for(int l = 0; l < L; l++){
-            for (int j = 0 ; j < number_of_clusters ; j++){
-                int key = g(pixels, w[l], t[l], rs[l], id, centers[j], K, M, NO_IMAGES/8, DIMENSION, l);
-                auto itr = mm[l]->equal_range(key);
-                for (auto it = itr.first; it != itr.second; it++) {
-                    double d = dist(pixels[it->second],clusters[j]->get_center(),2,DIMENSION);
-                    if ( d >= R ) continue;
 
-                    if (assigned[it->second]){
-                        if (d < dist(pixels[it->second], clusters[clustindexforps[it->second]]->get_center(), 2, DIMENSION)){
-                            clusters[clustindexforps[it->second]]->size_down();
-                            clustindexforps[it->second] = j;
-                            clusters[clustindexforps[it->second]]->size_up();
-                            sumofchanged++;
-                        }
-                    }
-                    else{
-                        clustindexforps[it->second] = j;
-                        clusters[clustindexforps[it->second]]->size_up();
-                        assigned[it->second] = true;
-                        sumofchanged++;
-                    }
-                }
-            }
-        }
-        R *= 2;
-        changefactor = sumofchanged*100/(double)(NO_IMAGES);
-    }
+    cluster_lsh(pixels, clusters, mm, clustindexforps, centers, assigned, w, t, rs, id, stopfactor, number_of_clusters, L, K, M, NO_IMAGES, DIMENSION, R, &dist);
 
     // Κανουμε assign τα σημεια που εμειναν unassigned
-    for (int i = 0 ; i < NO_IMAGES ; i++){
-        if (assigned[i]) continue;
-
-        int min = dist(pixels[i], clusters[0]->get_center(), 2, DIMENSION);
-        int mincenter = 0;
-        for(int j = 1; j < number_of_clusters; j++){
-            double ddd = dist(pixels[i], clusters[j]->get_center(), 2, DIMENSION);
-            if( ddd < min ){
-                min = ddd;
-                mincenter = j;
-            }
-        }
-
-        clustindexforps[i] = mincenter;
-        clusters[clustindexforps[i]]->size_up();
-    }
+    assign_unassigned(pixels, clusters, clustindexforps, assigned, number_of_clusters, NO_IMAGES, DIMENSION, &dist);
 
     auto stop = std::chrono::high_resolution_clock::now();
 

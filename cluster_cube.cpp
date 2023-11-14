@@ -4,6 +4,7 @@
 #include <vector>
 #include "generals.h"
 #include "lsh_func.h"
+#include "cube_func.h"
 #include "cluster_func.h"
 
 int main(int argc, char const *argv[]){
@@ -74,15 +75,9 @@ int main(int argc, char const *argv[]){
         return -1;
     }
 
-    int** pixels = new int*[NO_IMAGES];
+    int** pixels = readfile<int>(input_file, NO_IMAGES, DIMENSION);
 
-    for (int i = 0 ; i < NO_IMAGES ; i++){
-        pixels[i] = new int[DIMENSION];
-    }
-
-    readfile(input_file, pixels, NO_IMAGES, DIMENSION);
-
-    Cluster** clusters = new Cluster*[number_of_clusters];
+    Cluster<int>** clusters = new Cluster<int>*[number_of_clusters];
     int centers[number_of_clusters];
     for (int i = 0 ; i < number_of_clusters ; i++){
         centers[i] = -1;
@@ -117,26 +112,7 @@ int main(int argc, char const *argv[]){
         }
         if (already_center) continue;
 
-        long key = 0;
-        int bit = 1;
-        for (int j = 0 ; j < dt ; j++){
-            int zero_or_one;
-            int hi = rand() % K;   // Ποια h θα επιλεξουμε
-            int l = rand() % L;
-            int num = h(pixels[i], w[l][hi], t[l][hi], hi, DIMENSION, l);
-            auto itr = hypervalues.find(num);
-            if (itr == hypervalues.end()){      // Αν δεν υπαρχει μες στο map
-                zero_or_one = rand() % 2;
-                hypervalues.insert({ num, zero_or_one });
-            }
-            else{
-                zero_or_one = itr->second;
-            }
-            key += zero_or_one * bit;
-            bit *= 2;
-        }
-        
-        hypercube.insert({key,i});
+        preprocess_cube(pixels, hypervalues, hypercube, w, t, i, L, K, dt, DIMENSION);
     }
 
     bool* assigned = new bool[NO_IMAGES];
@@ -153,7 +129,6 @@ int main(int argc, char const *argv[]){
 
     // Δημιουργια αρχειου εξοδου
     std::ofstream Output(output_file);
-
     
     // Οριζουμε το R = min(αποσταση δυο cluster centers)
     float R = R_init(clusters, number_of_clusters, DIMENSION, &dist);
@@ -163,107 +138,16 @@ int main(int argc, char const *argv[]){
 
     long query_key[number_of_clusters];
     for (int i = 0 ; i < number_of_clusters ; i++){
-        query_key[i] = 0;
-        int bit = 1;
-        for (int j = 0 ; j < dt ; j++){
-            int zero_or_one;
-            int hi = rand() % K;   // Ποια h θα επιλεξουμε
-            int l = rand() % L;
-            int num = h(clusters[i]->get_center(), w[l][hi], t[l][hi], hi, DIMENSION, l); 
-            auto itr = hypervalues.find(num);
-            if (itr != hypervalues.end()){      // Αν δεν υπαρχει μες στο map
-                zero_or_one = rand() % 2;
-                hypervalues.insert({ num, zero_or_one });
-            }
-            else{
-                zero_or_one = itr->second;
-            }
-            query_key[i] += zero_or_one * bit;
-            bit *= 2;
-        }
+        query_key[i] = query_key_init(clusters[i]->get_center(), hypervalues, w, t, dt, K, L, DIMENSION);
     }
 
     // Assignment by Hypercube Range Search
     int* clustindexforps = new int[NO_IMAGES];
 
-    double changefactor = 100;
-    while (changefactor <= stopfactor){        // Οσο υπαρχει διαφορα πανω απο 5% σε σχεση με την τελευταια κατασταση συνεχιζουμε να ενημερωνουμε
-        int sumofchanged = 0;           // Αθροισμα διανυσματων που αλλαξαν cluster
-        for (int i = 0 ; i < number_of_clusters ; i++){
-            auto itr = hypercube.equal_range(query_key[i]);
-
-            std::bitset<32> binary_query_key(query_key[i]); // Convert p to binary representation
-            int countVerticesRange = 0;
-            int countCubeElementsRange = 0;
-            int hamming_dist_wantedRange = 0;
-
-            int hd = 0;
-
-            while (countCubeElementsRange < Mcube && countVerticesRange < probes){
-                for (auto it = itr.first; it != itr.second; it++) {
-                    countCubeElementsRange++;
-                    int d = dist(pixels[it->second],clusters[i]->get_center(),2,DIMENSION);
-                    if(d >= R) continue;
-                    
-                    if (assigned[it->second]){
-                        if (d < dist(pixels[it->second], clusters[clustindexforps[it->second]]->get_center(), 2, DIMENSION)){
-                            clusters[clustindexforps[it->second]]->size_down();
-                            clustindexforps[it->second] = i;
-                            clusters[clustindexforps[it->second]]->size_up();
-                            sumofchanged++;
-                        }
-                    }
-                    else{
-                        clustindexforps[it->second] = i;
-                        clusters[clustindexforps[it->second]]->size_up();
-                        assigned[it->second] = true;
-                        sumofchanged++;
-                    }
-                }
-                countVerticesRange++;
-
-                if (hd == query_key[i]){
-                    hd++;
-                    hd = hd % dt;
-                }
-                if (hd == 0) hamming_dist_wantedRange++;
-                while (1){
-                    std::bitset<32> binary_hd(hd); // Convert num to binary representation
-                    int differingBits = (binary_query_key ^ binary_hd).count(); // Count differing bits
-                    if (differingBits == hamming_dist_wantedRange){
-                        itr = hypercube.equal_range(hd);
-                        break;
-                    }
-
-                    hd++;
-                    hd = hd % dt;
-                    if (hd == 0) hamming_dist_wantedRange++;
-                }
-                
-            }
-        }
-        
-        R *= 2;
-        changefactor = sumofchanged*100/(double)(NO_IMAGES);
-    }
+    cluster_hypercube(pixels, clusters, hypercube, query_key, clustindexforps, assigned, number_of_clusters, stopfactor, dt, probes, Mcube, R, NO_IMAGES, DIMENSION, &dist);
 
     // Κανουμε assign τα σημεια που εμειναν unassigned
-    for (int i = 0 ; i < NO_IMAGES ; i++){
-        if (assigned[i]) continue;
-
-        int min = dist(pixels[i], clusters[0]->get_center(), 2, DIMENSION);
-        int mincenter = 0;
-        for(int j = 1; j < number_of_clusters; j++){
-            double ddd = dist(pixels[i], clusters[j]->get_center(), 2, DIMENSION);
-            if( ddd < min ){
-                min = ddd;
-                mincenter = j;
-            }
-        }
-
-        clustindexforps[i] = mincenter;
-        clusters[clustindexforps[i]]->size_up();
-    }
+    assign_unassigned(pixels, clusters, clustindexforps, assigned, number_of_clusters, NO_IMAGES, DIMENSION, &dist);
 
     auto stop = std::chrono::high_resolution_clock::now();
 

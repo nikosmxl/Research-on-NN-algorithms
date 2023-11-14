@@ -84,8 +84,10 @@ int main(int argc, char const *argv[]){
 
     std::map<int, int> hypervalues; // empty map container
     std::unordered_multimap<long, int> hypercube; // empty multimap container
-    
-    preprocess_cube(pixels, hypervalues, hypercube, w, t, L, K, dt, NO_IMAGES, DIMENSION);
+
+    for (int i = 0 ; i < NO_IMAGES ; i++){
+        preprocess_cube(pixels, hypervalues, hypercube, w, t, i, L, K, dt, DIMENSION);
+    }
 
     // Create Output file to write
     std::ofstream Output(output_file);
@@ -100,7 +102,7 @@ int main(int argc, char const *argv[]){
         
         int query = rand() % NO_QUERIES;
 
-        long query_key = query_key_init(queries, hypervalues, w, t, query, dt, K, L, DIMENSION);
+        long query_key = query_key_init(queries[query], hypervalues, w, t, dt, K, L, DIMENSION);
         
         // Hypercube knn
         Neibs<int>* cube_neibs = new Neibs<int>(pixels, queries, DIMENSION, N, query, &dist);

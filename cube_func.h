@@ -9,29 +9,27 @@
 #define CUBE_FUNC_H
 
 template <typename T>
-void preprocess_cube(T** pixels, std::map<int, int>& hypervalues, std::unordered_multimap<long, int>& hypercube, int** w, double** t, int L, int K, int dt, int NO_IMAGES, int DIMENSION){
-    for (int i = 0 ; i < NO_IMAGES ; i++){
-        long key = 0;
-        int bit = 1;
-        for (int j = 0 ; j < dt ; j++){
-            int zero_or_one;
-            int hi = rand() % K;   // Ποια h θα επιλεξουμε
-            int l = rand() % L;
-            int num = h(pixels[i], w[l][hi], t[l][hi], hi, DIMENSION, l);
-            auto itr = hypervalues.find(num);
-            if (itr == hypervalues.end()){      // Αν δεν υπαρχει μες στο map
-                zero_or_one = rand() % 2;
-                hypervalues.insert({ num, zero_or_one });
-            }
-            else{
-                zero_or_one = itr->second;
-            }
-            key += zero_or_one * bit;
-            bit *= 2;
+void preprocess_cube(T** pixels, std::map<int, int>& hypervalues, std::unordered_multimap<long, int>& hypercube, int** w, double** t, int i, int L, int K, int dt, int DIMENSION){
+    long key = 0;
+    int bit = 1;
+    for (int j = 0 ; j < dt ; j++){
+        int zero_or_one;
+        int hi = rand() % K;   // Ποια h θα επιλεξουμε
+        int l = rand() % L;
+        int num = h(pixels[i], w[l][hi], t[l][hi], hi, DIMENSION, l);
+        auto itr = hypervalues.find(num);
+        if (itr == hypervalues.end()){      // Αν δεν υπαρχει μες στο map
+            zero_or_one = rand() % 2;
+            hypervalues.insert({ num, zero_or_one });
         }
-        
-        hypercube.insert({key,i});
+        else{
+            zero_or_one = itr->second;
+        }
+        key += zero_or_one * bit;
+        bit *= 2;
     }
+    
+    hypercube.insert({key,i});
 }
 
 template <typename T>
@@ -109,14 +107,14 @@ void cube_rangeSearch(Neibs<T>* rangeSearchCube, std::map<int, int> hypervalues,
 }
 
 template <typename T>
-long query_key_init(T** queries, std::map<int, int>& hypervalues, int** w, double** t, int query, int dt, int K, int L, int DIMENSION){
+long query_key_init(T* vector, std::map<int, int>& hypervalues, int** w, double** t, int dt, int K, int L, int DIMENSION){
     long query_key = 0;
     int bit = 1;
     for (int j = 0 ; j < dt ; j++){
         int zero_or_one;
         int hi = rand() % K;   // Ποια h θα επιλεξουμε
         int l = rand() % L;
-        int num = h(queries[query], w[l][hi], t[l][hi], hi, DIMENSION, l);
+        int num = h(vector, w[l][hi], t[l][hi], hi, DIMENSION, l);
         auto itr = hypervalues.find(num);
         if (itr != hypervalues.end()){      // Αν δεν υπαρχει μες στο map
             zero_or_one = rand() % 2;

@@ -3,6 +3,8 @@
 #include <bits/stdc++.h>
 #include <vector>
 #include "generals.h"
+#include "lsh_func.h"
+#include "cube_func.h"
 #include "cluster_func.h"
 
 int main(int argc, char const *argv[]){
@@ -21,6 +23,7 @@ int main(int argc, char const *argv[]){
     int probes = 2;
     int number_of_clusters = 10;
     bool complete = false;
+    float R;
 
     // Ελεγχος γραμμης εντολων
     for (int i = 1 ; i < argc ; i++){
@@ -41,16 +44,17 @@ int main(int argc, char const *argv[]){
                 method = "Lloyds";
 
             }
-            else if (strcmp(argv[i], "LSH") == 0){
+            else if (strcmp(argv[i + 1], "LSH") == 0){
                 method = "Range Search LSH";
 
             }
-            else if (strcmp(argv[i], "Hypercube") == 0){
+            else if (strcmp(argv[i + 1], "Hypercube") == 0){
                 method = "Range Search Hypercube";
 
             }
             else{
                 std::cerr << "Wrong method. Enter one of the following methods next time: Classic, LSH, Hypercube.";
+                return -1;
             }
         }
     }
@@ -73,15 +77,11 @@ int main(int argc, char const *argv[]){
         return -1;
     }
 
-    int** pixels = new int*[NO_IMAGES];
+    int** pixels = readfile<int>(input_file, NO_IMAGES, DIMENSION);
 
-    for (int i = 0 ; i < NO_IMAGES ; i++){
-        pixels[i] = new int[DIMENSION];
-    }
+    int* clustindexforps = new int[NO_IMAGES];  // Σε ποιο cluster θα ανηκει το καθε διανυσμα
 
-    readfile(input_file, pixels, NO_IMAGES, DIMENSION);
-
-    Cluster** clusters = new Cluster*[number_of_clusters];
+    Cluster<int>** clusters = new Cluster<int>*[number_of_clusters];
     int centers[number_of_clusters];
     for (int i = 0 ; i < number_of_clusters ; i++){
         centers[i] = -1;
@@ -91,7 +91,79 @@ int main(int argc, char const *argv[]){
     srand(time(NULL));
     kmeans_plusplus(pixels, clusters, centers, number_of_clusters, NO_IMAGES, DIMENSION, &dist);
 
-    // Δημιουργια number_of_clusters clusters
+    int** w = new int*[L];
+    double** t = new double*[L];
+    int** rs = new int*[L]; // οι L πινακες που θα εχουν τα r για καθε map
+    std::unordered_multimap<int, int>* mm[L]; // empty multimap container
+    long* id = new long[NO_IMAGES];
+    bool* assigned = new bool[NO_IMAGES];
+    std::map<int, int> hypervalues; // empty map container
+    std::unordered_multimap<long, int> hypercube; // empty multimap container
+
+    if (method == "Range Search LSH" || method == "Range Search Hypercube"){
+        for (int i = 0 ; i < L ; i++){
+            w[i] = new int[K];
+            t[i] = new double[K];
+            
+            for (int j = 0 ; j < K ; j++){
+                w[i][j] = rand()%5 + 2; // τυχαιο για καθε μαπ απο 2 εως 6
+                t[i][j] = ( rand()%(w[i][j]*1000) )/1000.0; // τυχαιο για καθε μαπ στο [0,w)
+            }
+            if (method == "Range Search LSH"){
+                rs[i] = new int[K];
+                for (int j = 0 ; j < K ; j++){
+                    rs[i][j] = rand();  // τα r ειναι τυχαια
+                }
+            }
+            else{
+                delete[] rs;
+            }
+        }
+
+        if (method == "Range Search LSH"){
+            for (int l = 0 ; l < L ; l++){
+                mm[l] = new std::unordered_multimap<int, int>();
+                for (int j = 0 ; j < NO_IMAGES ; j++){
+                    bool already_center = false;
+                    for (int k = 0 ; k < number_of_clusters ; k++){
+                        if (j == centers[k]){
+                            already_center = true;
+                            break;
+                        }
+                    }
+                    if (already_center) continue;
+
+                    int key = g(pixels, w[l], t[l], rs[l], id, j, K, M, NO_IMAGES/8, DIMENSION, l);
+                    mm[l]->insert({key, j});
+                }
+            }
+        }
+        else{
+            for (int i = 0 ; i < NO_IMAGES ; i++){
+                bool already_center = false;
+                for (int k = 0 ; k < number_of_clusters ; k++){
+                    if (i == centers[k]){
+                        already_center = true;
+                        break;
+                    }
+                }
+                if (already_center) continue;
+
+                preprocess_cube(pixels, hypervalues, hypercube, w, t, i, L, K, dt, DIMENSION);
+            }
+        }
+
+        for (int i = 0 ; i < NO_IMAGES ; i++){
+            assigned[i] = false;
+        }
+    }
+    else{
+        delete[] w;
+        delete[] t;
+        delete[] rs;
+        delete[] id;
+        delete[] assigned;
+    }
 
     if (output_file.empty()){
         std::cout << "Enter output file: ";
@@ -101,38 +173,34 @@ int main(int argc, char const *argv[]){
     // Δημιουργια αρχειου εξοδου
     std::ofstream Output(output_file);
 
+    if (method == "Range Search LSH" || method == "Range Search Hypercube"){
+        // Οριζουμε το R = min(αποσταση δυο cluster centers)
+        R = R_init(clusters, number_of_clusters, DIMENSION, &dist);
+    }
+
+    std::cout << "Processing the data..." << std::endl;
     auto start = std::chrono::high_resolution_clock::now();
 
-    // Lloyd's algorithm
-    std::cout << "Processing the data..." << std::endl;
-
-    // Assignment (Expectation)
-    int* clustindexforps = new int[NO_IMAGES];
-    assignment_lloyds(pixels, clusters, clustindexforps, number_of_clusters, NO_IMAGES, DIMENSION, &dist);
-
-    // Update (Maximization)
-    double changefactor = 100;
-    while( changefactor >= stopfactor ){       // Οσο υπαρχει διαφορα πανω απο 5% σε σχεση με την τελευταια κατασταση συνεχιζουμε να ενημερωνουμε
-        update(number_of_clusters, DIMENSION, NO_IMAGES, clustindexforps, pixels, clusters);
-        int sumofchanged = 0;           // Αθροισμα διανυσματων που αλλαξαν cluster
-        for(int i = 0; i < NO_IMAGES; i++){
-            int min = dist(pixels[i], clusters[0]->get_center(), 2, DIMENSION);
-            int mincenter = 0;
-            for(int j = 1; j < number_of_clusters; j++){
-                double ddd = dist(pixels[i], clusters[j]->get_center(), 2, DIMENSION);
-                if( ddd < min ){
-                    min = ddd;
-                    mincenter = j;
-                }
-            }
-            if( clustindexforps[i] != mincenter ){
-                clusters[clustindexforps[i]]->size_down();  // Μειωνουμε το size του αφου θα χασει ενα vector
-                clustindexforps[i] = mincenter;
-                clusters[clustindexforps[i]]->size_up();    // Αυξανουμε το size του cluster που πηρε το vector
-                sumofchanged++;
-            }
+    long query_key[number_of_clusters];
+    if (method == "Range Search Hypercube"){
+        for (int i = 0 ; i < number_of_clusters ; i++){
+            query_key[i] = query_key_init(clusters[i]->get_center(), hypervalues, w, t, dt, K, L, DIMENSION);
         }
-        changefactor = sumofchanged*100/(double)(NO_IMAGES);
+    }
+    
+    if (method == "Lloyds"){
+        cluster_lloyds(pixels, clusters, clustindexforps, number_of_clusters, NO_IMAGES, DIMENSION, stopfactor, &dist);
+    }
+    else if (method == "Range Search LSH"){
+        cluster_lsh(pixels, clusters, mm, clustindexforps, centers, assigned, w, t, rs, id, stopfactor, number_of_clusters, L, K, M, NO_IMAGES, DIMENSION, R, &dist);
+    }
+    else if (method == "Range Search Hypercube"){
+        cluster_hypercube(pixels, clusters, hypercube, query_key, clustindexforps, assigned, number_of_clusters, stopfactor, dt, probes, Mcube, R, NO_IMAGES, DIMENSION, &dist);
+    }
+
+    if (method == "Range Search LSH" || method == "Range Search Hypercube"){
+        // Κανουμε assign τα σημεια που εμειναν unassigned
+        assign_unassigned(pixels, clusters, clustindexforps, assigned, number_of_clusters, NO_IMAGES, DIMENSION, &dist);
     }
 
     auto stop = std::chrono::high_resolution_clock::now();
@@ -164,6 +232,14 @@ int main(int argc, char const *argv[]){
 
     // Κλεισιμο αρχειου εξοδου
     Output.close();
+
+    // Deallocations
+    for (int i = 0 ; i < NO_IMAGES ; i++){
+        delete[] pixels[i];
+    }
+    delete[] pixels;
+    delete[] clustindexforps;
+    delete[] clusters;
 
     return 0;
 }
