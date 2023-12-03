@@ -138,14 +138,12 @@ std::set<int, DistComparator<int>>* lsh_knn_mrng(T** p, std::unordered_multimap<
 template <typename T>
 void mrng(int start, int end, Graph* gr, T** pixels, double* distances, std::unordered_multimap<int, int>** mm, int** w, double** t, int** rs, long* id, int k, int L, int K, long M, int NO_IMAGES, int DIMENSION){
     std::unordered_set<int> Rp;
-    std::cout << "ALALOUM" << std::endl;
+    
     for (int j = 0 ; j < NO_IMAGES ; j++){
         Rp.insert(j);
     }
     
     for (int i = start ; i < end ; i++){
-        std::cout << "i is " << i << std::endl;
-        auto startmini = std::chrono::high_resolution_clock::now();
         std::set<int, DistComparator<int>>* Lp = lsh_knn_mrng(pixels, mm, w, t, rs, id, i, k, L, K, M, NO_IMAGES, DIMENSION, true);
         
         Rp.erase(i);    // Rp = S - {p}
@@ -182,11 +180,6 @@ void mrng(int start, int end, Graph* gr, T** pixels, double* distances, std::uno
         for (auto l : *Lp){
             Rp.insert(l);
         }
-        auto stopmini = std::chrono::high_resolution_clock::now();
-
-        double durationmini = std::chrono::duration_cast<std::chrono::milliseconds>(stopmini - startmini).count();
-        durationmini *= 1e-3;
-        std::cout << "time is : " << durationmini << " seconds" << std::endl;
 
         delete Lp;
     }
@@ -194,7 +187,6 @@ void mrng(int start, int end, Graph* gr, T** pixels, double* distances, std::uno
 
 template <typename T>
 void threaded_mrng(int numThreads, Graph* gr, T** pixels, std::unordered_multimap<int, int>** mm, int** w, double** t, int** rs, long* id, int k, int L, int K, long M, int NO_IMAGES, int DIMENSION, double (*dist)(T *, T *, int, int)){
-    std::cout << "Creating the dist..." << std::endl;
     double* distances = threaded_distances_init(numThreads, pixels, NO_IMAGES, DIMENSION, dist);
     // double* distances = new double[NO_IMAGES];
     
@@ -203,7 +195,7 @@ void threaded_mrng(int numThreads, Graph* gr, T** pixels, std::unordered_multima
 
     // Create threads
     std::thread threads[numThreads];
-    std::cout << "mrng..." << std::endl;
+    
     // Launch threads to fill array in parallel
     for (int thr = 0; thr < numThreads; thr++) {
         int start = thr * chunkSize;
