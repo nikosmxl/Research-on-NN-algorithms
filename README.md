@@ -7,7 +7,7 @@
 Τροπος μεταγλωτισης lsh: make lsh ή g++ -o lsh lsh.cpp lsh_func.cpp generals.cpp
 Τροπος μεταγλωτισης cube: make cube ή g++ -o cube cube.cpp lsh_func.cpp generals.cpp
 Τροπος μεταγλωτισης cluster: make cluster ή g++ -o cluster cluster.cpp cluster_func.cpp cube_func.cpp lsh_func.cpp generals.cpp
-Τροπος μεταγλωτισης graph_search:
+Τροπος μεταγλωτισης graph_search: make graph_search ή g++ -pthread -o graph_search graph_search.cpp graph_search_func.cpp generals.cpp lsh_func.cpp
 
 ------------------------------------------------------------------------- Εργασια 2 ----------------------------------------------------------------------------------------
 
