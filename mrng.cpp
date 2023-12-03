@@ -17,8 +17,9 @@ int main(int argc, char const *argv[]) {
     unsigned int R = 1;                 // Αριθμος τυχαιων επανεκκινησεων
     unsigned int E = 30;                // Αριθμος επεκτασεων
     std::size_t candidate_size = 20;    // Το πληθος υποψηφιων L που θα δεχτουμε
-    unsigned int L = ceil(k / 8.0);     // L maps της LSH
+    unsigned int L = ceil(k *0.125);     // L maps της LSH
     unsigned int K = floor(L *0.625);   // K παραμετρος της LSH
+    bool local_optimal = false;
 
     for (int i = 1 ; i < argc ; i++){
         if (strcmp(argv[i], "-d") == 0 && i + 1 < argc){
@@ -73,7 +74,8 @@ int main(int argc, char const *argv[]) {
 
     if (input_file.empty()){
         std::cout << "Enter input file: ";
-        std::cin >> input_file;
+        std::getline(std::cin, input_file);
+        if (std::cin.fail() || input_file.empty()) exit(-1);
     }
 
     std::cout << "Preprocessing the data..." << std::endl;
@@ -94,70 +96,45 @@ int main(int argc, char const *argv[]) {
     std::cout << "Creating the graph..." << std::endl;
 
     Graph* gr = new Graph(NO_IMAGES);
-
-    std::ofstream Apotelesmata("apotelesmata.txt");
-
-    // auto startdist = std::chrono::high_resolution_clock::now();
-
-    // double* distances = distances_init("apostaseis.txt", NO_IMAGES);
-
-    // auto stopdist = std::chrono::high_resolution_clock::now();
-
-    // double durationdistances = std::chrono::duration_cast<std::chrono::minutes>(stopdist - startdist).count();
-    // Apotelesmata << "WHOLE TIME FOR DISTANCES IS : " << durationdistances << " minutes" << std::endl;
-
-    auto startmrng = std::chrono::high_resolution_clock::now();
-
-    threaded_mrng(4, gr, pixels, mm, w, t, rs, id, k, L, K, M, NO_IMAGES, DIMENSION, &dist);
-    // graph_init(gr, "graph2.txt");
-    
-    auto stopmrng = std::chrono::high_resolution_clock::now();
-
-    double durationMRNG = std::chrono::duration_cast<std::chrono::minutes>(stopmrng - startmrng).count();
-    Apotelesmata << "WHOLE TIME FOR MRNG WITH 4 THREADS IS : " << durationMRNG << " minutes" << std::endl;
-
-    std::cout << "Made the graph..." << std::endl;
-    std::ofstream Graphfile("graph.txt");
-    for (int i = 0 ; i < NO_IMAGES ; i++){
-        Graphfile << i << " ";
-        std::vector<int>* vert = gr->get_node_nn(i);
-        for (auto j = vert->begin() ; j != vert->end() ; j++){
-            Graphfile << *j << " ";
-        }
-        Graphfile << std::endl;
+    if (method == "GNNS Results"){
+        gnns_construction(pixels, gr, mm, w, t, rs, id, k, L, K, M, NO_IMAGES, DIMENSION, &dist);
     }
-    std::cout << "Creating the centroid..." << std::endl;
-    int** centroid = new int*[1];
-    centroid[0] = new int[DIMENSION];
-    for (int i = 0 ; i < DIMENSION ; i++){
-        centroid[0][i] = 0;
-        for (int j = 0 ; j < NO_IMAGES ; j++){
-            centroid[0][i] += pixels[i][j];
-        }
+    else if (method == "MRNG Results"){
+        graph_init_file(gr, "graph2.txt");
+        // threaded_mrng(4, gr, pixels, mm, w, t, rs, id, k, L, K, M, NO_IMAGES, DIMENSION, &dist);
     }
-    std::cout << "Creating the navigation node..." << std::endl;
-    Neibs<int>* navigation_node = new Neibs<int>(pixels, centroid, DIMENSION, 1, 0, &dist);
-    lsh_knn(centroid, mm, navigation_node, w, t, rs, id, 0, L, K, M, NO_IMAGES, DIMENSION, false);
 
+    Neibs<int>* navigation_node;
+    if (method == "MRNG Results"){
+        int** centroid = new int*[1];
+        centroid[0] = new int[DIMENSION];
+        for (int i = 0 ; i < DIMENSION ; i++){
+            centroid[0][i] = 0;
+            for (int j = 0 ; j < NO_IMAGES ; j++){
+                centroid[0][i] += pixels[i][j];
+            }
+        }
+        
+        navigation_node = new Neibs<int>(pixels, centroid, DIMENSION, 1, 0, &dist);
+        lsh_knn(centroid, mm, navigation_node, w, t, rs, id, 0, L, K, M, NO_IMAGES, DIMENSION, false);
+    }
     if (query_file.empty()){
         std::cout << "Enter query file: ";
-        std::cin >> query_file;
+        std::getline(std::cin, query_file);
+        if (std::cin.fail() || query_file.empty()) exit(-1);
     }
     if (output_file.empty()){
         std::cout << "Enter output file: ";
-        std::cin >> output_file;
+        std::getline(std::cin, output_file);
+        if (std::cin.fail() || output_file.empty()) exit(-1);
     }
 
     // Create Output file to write
     std::ofstream Output(output_file);
 
-    std::vector<double> timesSOG;
+    std::vector<double> timesSearch;
     std::vector<double> timesTrue;
     double MAF = -1;
-
-    std::string del;
-    std::cout << "ta duskola perasan..mallon?" << std::endl;
-    std::cin >> del;
 
     Output << method << std::endl;
 
@@ -167,49 +144,20 @@ int main(int argc, char const *argv[]) {
         // Read from query file
         int** queries = readfile<int>(query_file, NO_QUERIES, DIMENSION);
 
-        auto startSOG = std::chrono::high_resolution_clock::now();
+        auto startSearch = std::chrono::high_resolution_clock::now();
 
         int query = rand() % NO_QUERIES;
 
         // Process
-        bool checked[NO_IMAGES];
-        for (int i = 0 ; i < NO_IMAGES ; i++){
-            checked[i] = false;
+        Neibs<int>* Search;
+        if (method == "GNNS Results"){
+            Search = gnns_search(gr, pixels, queries, query, N, T, R, E, NO_IMAGES, DIMENSION, local_optimal, &dist);
         }
-        std::set<int, DistComparator<int>> Rset(DistComparator<int>(pixels, queries, query, DIMENSION));
-        Rset.insert(navigation_node->givenn(0));
-        std::cout << "nav node is " << navigation_node->givenn(0) << std::endl;
-        int cands_checked = 0;
-        while (cands_checked < candidate_size){
-            std::cout << "candschecked is " << cands_checked << std::endl;
-            for (auto p : Rset){
-                std::cout << "p is " << p << " and checked of p is " << checked[p] << std::endl;
-                if (!checked[p]){std::cout << "MPAINW GENIKA" << std::endl;
-                    checked[p] = true;
-                    cands_checked++;
-                    std::vector<int>* N = gr->get_node_nn(p);
-                    for (auto it = N->begin() ; it < N->end() ; it++){
-                        std::cout << "EXEI " << *it << std::endl;
-                        Rset.insert(*it);
-                    }
-
-                    delete N;
-                    break;
-                }
-            }
-            
+        else if (method == "MRNG Results"){
+            Search = search_on_graph(gr, pixels, queries, query, navigation_node, candidate_size, N, NO_IMAGES, DIMENSION, &dist);
         }
 
-        Neibs<int>* SOG = new Neibs<int>(pixels, queries, DIMENSION, N, query, &dist);
-        int first_k = 0;
-        for (auto r : Rset){
-            SOG->insertionsort_insert(r);
-            first_k++;
-            if (first_k == N) break;
-        }
-
-        std::cout << "Did the search..." << std::endl;
-        auto stopSOG = std::chrono::high_resolution_clock::now();
+        auto stopSearch = std::chrono::high_resolution_clock::now();
 
         auto startReal = std::chrono::high_resolution_clock::now();
 
@@ -222,11 +170,11 @@ int main(int argc, char const *argv[]) {
 
         Output << "Query: " << query << std::endl;
         for (int i = 0 ; i < N ; i++){
-            Output << "Nearest neighbor-" << i + 1 << ": " << SOG->givenn(i) << std::endl;
-            Output << "distanceApproximate: " << SOG->givedist(i) << std::endl;
+            Output << "Nearest neighbor-" << i + 1 << ": " << Search->givenn(i) << std::endl;
+            Output << "distanceApproximate: " << Search->givedist(i) << std::endl;
             Output << "distanceTrue: " << real_neighbs->givedist(i) << std::endl;
             if (i == 0){
-                double AF = SOG->givedist(i) / real_neighbs->givedist(i);
+                double AF = Search->givedist(i) / real_neighbs->givedist(i);
                 if (MAF != -1){
                     if (MAF < AF){
                         MAF = AF;
@@ -239,9 +187,9 @@ int main(int argc, char const *argv[]) {
         }
 
         // Calculating total time taken by the program.
-        double durationSOG = std::chrono::duration_cast<std::chrono::milliseconds>(stopSOG - startSOG).count();
-        durationSOG *= 1e-3;
-        timesSOG.push_back(durationSOG);
+        double durationSearch = std::chrono::duration_cast<std::chrono::milliseconds>(stopSearch - startSearch).count();
+        durationSearch *= 1e-3;
+        timesSearch.push_back(durationSearch);
 
         double durationReal = std::chrono::duration_cast<std::chrono::milliseconds>(stopReal - startReal).count();
         durationReal *= 1e-3;
@@ -253,7 +201,7 @@ int main(int argc, char const *argv[]) {
         }
         delete[] queries;
         delete real_neighbs;
-        delete SOG;
+        delete Search;
 
         // Quit or rerun with a different file
         std::cout << "Type quit to stop, type a different query file name to rerun it with or press enter to rerun with the same query file" << std::endl;
@@ -265,12 +213,12 @@ int main(int argc, char const *argv[]) {
     }
 
     // Calculating average time of the algorithm and average real time
-    double averageSOG = 0.0;
+    double averageSearch = 0.0;
     double averageTrue = 0.0;
-    for (auto it = timesSOG.begin(); it != timesSOG.end(); it++){
-        averageSOG += *it;
+    for (auto it = timesSearch.begin(); it != timesSearch.end(); it++){
+        averageSearch += *it;
     }
-    averageSOG /= timesSOG.size();
+    averageSearch /= timesSearch.size();
 
     for (auto it = timesTrue.begin(); it != timesTrue.end(); it++){
         averageTrue += *it;
@@ -278,7 +226,7 @@ int main(int argc, char const *argv[]) {
     averageTrue /= timesTrue.size();
     
     // Printing the average time of the algorithm and the average real time
-    Output << "tAverageApproximate: " << std::fixed << std::setprecision(4) << averageSOG << " seconds" << std::endl;
+    Output << "tAverageApproximate: " << std::fixed << std::setprecision(4) << averageSearch << " seconds" << std::endl;
     Output << "tAverageTrue: " << std::fixed << std::setprecision(4) << averageTrue << " seconds" << std::endl;
     Output << "MAF: " << std::fixed << std::setprecision(4) <<  MAF << std::endl;
     

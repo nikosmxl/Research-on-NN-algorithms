@@ -195,7 +195,7 @@ void threaded_mrng(int numThreads, Graph* gr, T** pixels, std::unordered_multima
 
     // Create threads
     std::thread threads[numThreads];
-    
+
     // Launch threads to fill array in parallel
     for (int thr = 0; thr < numThreads; thr++) {
         int start = thr * chunkSize;
@@ -214,3 +214,80 @@ void threaded_mrng(int numThreads, Graph* gr, T** pixels, std::unordered_multima
 int min(int** pixels, int** queries, int query, std::vector<int>* cands, int DIM, double (*dist)(int*, int*, int, int));
 
 void set_insert(std::vector<int>& S, std::vector<int>* cands);
+
+template<typename T>
+Neibs<int>* search_on_graph(Graph* gr, T** pixels, T** queries, int query, Neibs<int>* navigation_node, std::size_t candidate_size, int N, int NO_IMAGES, int DIMENSION, double (*dist)(T*, T*, int, int)){
+    bool checked[NO_IMAGES];
+    for (int i = 0 ; i < NO_IMAGES ; i++){
+        checked[i] = false;
+    }
+    std::set<int, DistComparator<int>> Rset(DistComparator<int>(pixels, queries, query, DIMENSION));
+    Rset.insert(navigation_node->givenn(0));
+    int cands_checked = 0;
+    while (cands_checked < candidate_size){
+        for (auto p : Rset){
+            if (!checked[p]){
+                checked[p] = true;
+                cands_checked++;
+                std::vector<int>* N = gr->get_node_nn(p);
+                for (auto it = N->begin() ; it < N->end() ; it++){
+                    Rset.insert(*it);
+                }
+
+                delete N;
+                break;
+            }
+        }
+    }
+
+    Neibs<int>* SOG = new Neibs<int>(pixels, queries, DIMENSION, N, query, dist);
+    int first_k = 0;
+    for (auto r : Rset){
+        SOG->insertionsort_insert(r);
+        first_k++;
+        if (first_k == N) break;
+    }
+
+    return SOG;
+}
+
+template<typename TN>
+Neibs<int>* gnns_search(Graph* gr, TN** pixels, TN** queries, int query, int N, int T, int R, int E, int NO_IMAGES, int DIMENSION, bool local_optimal, double (*dist)(TN*, TN*, int, int)){
+    std::vector<int> S;
+        
+    for (int r = 0 ; r < R ; r++){
+        int y = rand() % NO_IMAGES;
+        for (int t = 0 ; t < T ; t++){
+            std::vector<int>* candidates = gr->get_node_nn(y, E);
+            set_insert(S, candidates);    // S = S U N(Y, E, G)
+            int y_next = min(pixels, queries, query, candidates, DIMENSION, dist);    // Yt = arg minY∈N(Yt−1,E,G)δ(Y, Q)
+            delete candidates;
+
+            if (local_optimal){
+                if (dist(pixels[y], queries[query], 2, DIMENSION) < dist(pixels[y_next], queries[query], 2, DIMENSION)) break;  // Local optimal
+            }
+            
+            y = y_next;
+        }
+    }
+    Neibs<int>* gnns = new Neibs<int>(pixels, queries, DIMENSION, N, query, dist);
+    for (auto it = S.rbegin(); it != S.rend(); it++){
+        gnns->insertionsort_insert(*it);
+    }
+
+    return gnns;
+}
+
+template<typename T>
+void gnns_construction(T** pixels, Graph* gr, std::unordered_multimap<int, int>** mm, int** w, double** t, int** rs, long* id, int k, int L, int K, long M, int NO_IMAGES, int DIMENSION, double (*dist)(T*, T*, int, int)){
+    for (int i = 0 ; i < NO_IMAGES ; i++){
+        Neibs<int>* lsh = new Neibs<int>(pixels, pixels, DIMENSION, k, i, dist);
+        lsh_knn(pixels, mm, lsh, w, t, rs, id, i, L, K, M, NO_IMAGES, DIMENSION, true);
+
+        for (int j = 0 ; j < lsh->give_size() ; j++){
+            gr->addEdge(i, lsh->givenn(j));
+        }
+
+        delete lsh;
+    }
+}
