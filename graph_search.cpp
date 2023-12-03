@@ -62,16 +62,19 @@ int main(int argc, char const *argv[]) {
         }
     }
 
+    // If method is empty exit
     if (method.empty()){
         std::cerr << "Error. No method entered. Next time enter 1 for GNNS, 2 for MRNG";
         return -1;
     }
 
+    // N <= l
     if (method == "MRNG Results" && N > candidate_size){
         std::cerr << "Error. N cannot be bigger than L. Try again with valid arguments";
         return -1;
     }
 
+    // If input file is not given
     if (input_file.empty()){
         std::cout << "Enter input file: ";
         std::getline(std::cin, input_file);
@@ -103,6 +106,7 @@ int main(int argc, char const *argv[]) {
         threaded_mrng(4, gr, pixels, mm, w, t, rs, id, k, L, K, M, NO_IMAGES, DIMENSION, &dist);
     }
 
+    // Calculating navigation node in case it is MRNG method
     Neibs<int>* navigation_node;
     if (method == "MRNG Results"){
         int** centroid = new int*[1];
@@ -117,11 +121,15 @@ int main(int argc, char const *argv[]) {
         navigation_node = new Neibs<int>(pixels, centroid, DIMENSION, 1, 0, &dist);
         lsh_knn(centroid, mm, navigation_node, w, t, rs, id, 0, L, K, M, NO_IMAGES, DIMENSION, false);
     }
+
+    // If query file is not given
     if (query_file.empty()){
         std::cout << "Enter query file: ";
         std::getline(std::cin, query_file);
         if (std::cin.fail() || query_file.empty()) exit(-1);
     }
+
+    // If output file is not given
     if (output_file.empty()){
         std::cout << "Enter output file: ";
         std::getline(std::cin, output_file);
@@ -145,7 +153,7 @@ int main(int argc, char const *argv[]) {
 
         auto startSearch = std::chrono::high_resolution_clock::now();
 
-        int query = rand() % NO_QUERIES;
+        int query = rand() % NO_QUERIES;        // Random query
 
         // Process
         Neibs<int>* Search;
@@ -167,6 +175,7 @@ int main(int argc, char const *argv[]) {
 
         auto stopReal = std::chrono::high_resolution_clock::now();
 
+        // Prints
         Output << "Query: " << query << std::endl;
         for (int i = 0 ; i < N ; i++){
             Output << "Nearest neighbor-" << i + 1 << ": " << Search->givenn(i) << std::endl;
@@ -202,7 +211,7 @@ int main(int argc, char const *argv[]) {
         delete real_neighbs;
         delete Search;
 
-        // Quit or rerun with a different file
+        // Quit or rerun with a different/same file
         std::cout << "Type quit to stop, type a different query file name to rerun it with or press enter to rerun with the same query file" << std::endl;
         std::string input;
         std::getline(std::cin, input);
