@@ -58,28 +58,10 @@ int main(int argc, char const *argv[]){
     int** w = new int*[L];
     double** t = new double*[L];
     int** rs = new int*[L]; // οι L πινακες που θα εχουν τα r για καθε map
-
-    for (int i = 0 ; i < L ; i++){
-        w[i] = new int[K];
-        t[i] = new double[K];
-        rs[i] = new int[K];
-        for (int j = 0 ; j < K ; j++){
-            w[i][j] = rand()%5 + 2; // τυχαιο για καθε μαπ απο 2 εως 6
-            t[i][j] = ( rand()%(w[i][j]*1000) )/1000.0; // τυχαιο για καθε μαπ στο [0,w)
-            rs[i][j] = rand();  // τα r ειναι τυχαια
-        }
-    }
-
     std::unordered_multimap<int, int>* mm[L]; // empty multimap container
     long* id = new long[NO_IMAGES];
 
-    for (int l = 0 ; l < L ; l++){
-        mm[l] = new std::unordered_multimap<int, int>();
-        for (int j = 0 ; j < NO_IMAGES ; j++){
-            int key = g(pixels, w[l], t[l], rs[l], id, j, K, M, NO_IMAGES/8, DIMENSION, l);
-            mm[l]->insert({key, j});
-        }
-    }
+    lsh_init(pixels, w, t, rs, mm, id, L, K, M, NO_IMAGES, DIMENSION);
 
     if (query_file.empty()){
         std::cout << "Enter query file: ";
@@ -103,13 +85,13 @@ int main(int argc, char const *argv[]){
         
         int query = rand() % NO_QUERIES;
         Neibs<int>* lsh = new Neibs<int>(pixels, queries, DIMENSION, N, query, &dist);
-
-        lsh_knn(pixels, mm, lsh, w, t, rs, id, query, L, K, M, NO_IMAGES, DIMENSION);
-
+        
+        lsh_knn(queries, mm, lsh, w, t, rs, id, query, L, K, M, NO_IMAGES, DIMENSION, false);
+        
         Neibs<int>* rangeSearch = new Neibs<int>(pixels, queries, DIMENSION, NO_IMAGES, query, &dist);
-
+        
         lsh_rangeSearch(pixels, queries, mm, rangeSearch, w, t, rs, id, query, L, K, M, NO_IMAGES, DIMENSION, R);
-
+        
         auto stopLSH = std::chrono::high_resolution_clock::now();
 
         auto startReal = std::chrono::high_resolution_clock::now();
@@ -143,12 +125,10 @@ int main(int argc, char const *argv[]){
         delete lsh;
         delete rangeSearch;
         delete real_neighbs;
-
-        for (int i = 0 ; i < NO_IMAGES ; i++){
+        for (int i = 0 ; i < NO_QUERIES ; i++){
             delete[] queries[i];
         }
         delete[] queries;
-
         std::cout << "Type quit to stop or a different query file name to rerun it with" << std::endl;
         std::cin >> query_file;
         if (query_file == "quit") break;

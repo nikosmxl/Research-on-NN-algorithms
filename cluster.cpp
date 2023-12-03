@@ -59,6 +59,11 @@ int main(int argc, char const *argv[]){
         }
     }
 
+    if (method.empty()){
+        std::cerr << "Error. No algorithm entered. Next time enter Classic, LSH or Hypercube";
+        return -1;
+    }
+
     // Input file (αν δεν δοθηκε στη γραμμη εντολων)
     if (input_file.empty()){
         std::cout << "Enter input file: ";
