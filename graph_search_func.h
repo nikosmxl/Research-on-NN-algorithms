@@ -218,3 +218,7 @@ void threaded_mrng(int numThreads, Graph* gr, T** pixels, std::unordered_multima
 
     delete[] distances;
 }
+
+int min(int** pixels, int** queries, int query, std::vector<int>* cands, int DIM, double (*dist)(int*, int*, int, int));
+
+void set_insert(std::vector<int>& S, std::vector<int>* cands);

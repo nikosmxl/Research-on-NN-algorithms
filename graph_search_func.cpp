@@ -128,3 +128,40 @@ double* distances_init_file(std::string filename, long NUM_PS){
 
     return d;
 }
+
+void set_insert(std::vector<int>& S, std::vector<int>* cands){
+    for (auto it = cands->begin(); it != cands->end(); it++){
+        S.push_back(*it);
+    }
+}
+
+int min(int** pixels, int** queries, int query, std::vector<int>* cands, int DIM, double (*dist)(int*, int*, int, int)){
+    if (cands->empty()) {
+        // Handle the case where the candidates vector is empty
+        std::cerr << "Error: Empty candidates vector." << std::endl;
+        return -1;  // Return an error code or handle it appropriately
+    }
+
+    auto curr_it = cands->begin();
+    if (curr_it == cands->end()) {
+        // Handle the case where the candidates vector is empty
+        std::cerr << "Error: Empty candidates vector." << std::endl;
+        return -1;  // Return an error code or handle it appropriately
+    }
+
+    int min = *curr_it;
+
+    double min_dist = dist(pixels[min], queries[query], 2, DIM);
+    curr_it++;
+
+    for (auto it = curr_it; it != cands->end(); it++) {
+        double curr_dist = dist(pixels[*it], queries[query], 2, DIM);
+
+        if (curr_dist < min_dist) {
+            min = *it;
+            min_dist = curr_dist;
+        }
+    }
+
+    return min;
+}

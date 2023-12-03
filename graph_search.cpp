@@ -1,98 +1,82 @@
 #include <iostream>
-#include <list>
 #include <string.h>
-#include "generals.h"
-#include "lsh_func.h"
+#include "graph_search_func.h"
 
-class Graph {
-private:
-    int vertices; // Number of vertices
-    std::list<int>* adjacencyList; // Array of linked lists to represent adjacency list
-
-public:
-    // Constructor
-    Graph(int vertices) : vertices(vertices) {
-        adjacencyList = new std::list<int>[vertices];
+template<typename T>
+Neibs<int>* search_on_graph(Graph* gr, T** pixels, T** queries, int query, Neibs<int>* navigation_node, std::size_t candidate_size, int N, int NO_IMAGES, int DIMENSION, double (*dist)(T*, T*, int, int)){
+    bool checked[NO_IMAGES];
+    for (int i = 0 ; i < NO_IMAGES ; i++){
+        checked[i] = false;
     }
+    std::set<int, DistComparator<int>> Rset(DistComparator<int>(pixels, queries, query, DIMENSION));
+    Rset.insert(navigation_node->givenn(0));
+    int cands_checked = 0;
+    while (cands_checked < candidate_size){
+        for (auto p : Rset){
+            if (!checked[p]){
+                checked[p] = true;
+                cands_checked++;
+                std::vector<int>* N = gr->get_node_nn(p);
+                for (auto it = N->begin() ; it < N->end() ; it++){
+                    Rset.insert(*it);
+                }
 
-    // Destructor
-    ~Graph() {
-        delete[] adjacencyList;
-    }
-
-    // Add a directed edge to the graph
-    void addEdge(int source, int destination) {
-        adjacencyList[source].push_back(destination);
-    }
-
-    // Print the adjacency list representation of the directed graph
-    void printGraph() {
-        for (int i = 0; i < vertices; ++i) {
-            std::cout << "Adjacency list of vertex " << i << ": ";
-            for (const auto& neighbor : adjacencyList[i]) {
-                std::cout << neighbor << " ";
+                delete N;
+                break;
             }
-            std::cout << std::endl;
         }
     }
 
-    std::vector<int>* get_node_nn(int node, int E){
-        std::vector<int>* vect = new std::vector<int>();
-        int i = 0;
-        for (const auto& neighbor : adjacencyList[node]) {
-            vect->push_back(neighbor);
-            if (i == E - 1) break;
-        }
-
-        return vect;
+    Neibs<int>* SOG = new Neibs<int>(pixels, queries, DIMENSION, N, query, dist);
+    int first_k = 0;
+    for (auto r : Rset){
+        SOG->insertionsort_insert(r);
+        first_k++;
+        if (first_k == N) break;
     }
 
-    std::vector<int>* get_node_nn(int node){
-        std::vector<int>* vect = new std::vector<int>();
-
-        for (const auto& neighbor : adjacencyList[node]) {
-            vect->push_back(neighbor);
-        }
-
-        return vect;
-    }
-};
-
-void set_insert(std::vector<int>& S, std::vector<int>* cands){
-    for (auto it = cands->begin(); it != cands->end(); it++){
-        S.push_back(*it);
-    }
+    return SOG;
 }
 
-int min(int** pixels, int** queries, int query, std::vector<int>* cands, int DIM, double (*dist)(int*, int*, int, int)){
-    if (cands->empty()) {
-        // Handle the case where the candidates vector is empty
-        std::cerr << "Error: Empty candidates vector." << std::endl;
-        return -1;  // Return an error code or handle it appropriately
-    }
+template<typename TN>
+Neibs<int>* gnns_search(Graph* gr, TN** pixels, TN** queries, int query, int N, int T, int R, int E, int NO_IMAGES, int DIMENSION, bool local_optimal, double (*dist)(TN*, TN*, int, int)){
+    std::vector<int> S;
+        
+    for (int r = 0 ; r < R ; r++){
+        int y = rand() % NO_IMAGES;
+        for (int t = 0 ; t < T ; t++){
+            std::vector<int>* candidates = gr->get_node_nn(y, E);
+            set_insert(S, candidates);    // S = S U N(Y, E, G)
+            int y_next = min(pixels, queries, query, candidates, DIMENSION, dist);    // Yt = arg minY∈N(Yt−1,E,G)δ(Y, Q)
+            delete candidates;
 
-    auto curr_it = cands->begin();
-    if (curr_it == cands->end()) {
-        // Handle the case where the candidates vector is empty
-        std::cerr << "Error: Empty candidates vector." << std::endl;
-        return -1;  // Return an error code or handle it appropriately
-    }
-
-    int min = *curr_it;
-
-    double min_dist = dist(pixels[min], queries[query], 2, DIM);
-    curr_it++;
-
-    for (auto it = curr_it; it != cands->end(); it++) {
-        double curr_dist = dist(pixels[*it], queries[query], 2, DIM);
-
-        if (curr_dist < min_dist) {
-            min = *it;
-            min_dist = curr_dist;
+            if (local_optimal){
+                if (dist(pixels[y], queries[query], 2, DIMENSION) < dist(pixels[y_next], queries[query], 2, DIMENSION)) break;  // Local optimal
+            }
+            
+            y = y_next;
         }
     }
+    Neibs<int>* gnns = new Neibs<int>(pixels, queries, DIMENSION, N, query, dist);
+    for (auto it = S.rbegin(); it != S.rend(); it++){
+        gnns->insertionsort_insert(*it);
+    }
 
-    return min;
+    return gnns;
+}
+
+template<typename T>
+void gnns_construction(T** pixels, Graph* gr, std::unordered_multimap<int, int>** mm, int** w, double** t, int** rs, long* id, int k, int L, int K, long M, int NO_IMAGES, int DIMENSION, double (*dist)(T*, T*, int, int)){
+    for (int i = 0 ; i < NO_IMAGES ; i++){
+        Neibs<int>* lsh = new Neibs<int>(pixels, pixels, DIMENSION, k, i, dist);
+        lsh_knn(pixels, mm, lsh, w, t, rs, id, i, L, K, M, NO_IMAGES, DIMENSION, true);
+
+        for (int j = 0 ; j < lsh->give_size() ; j++){
+            gr->addEdge(i, lsh->givenn(j));
+        }
+
+        delete lsh;
+    }
 }
 
 int main(int argc, char const *argv[]) {
@@ -112,6 +96,7 @@ int main(int argc, char const *argv[]) {
     std::size_t candidate_size = 20;    // Το πληθος υποψηφιων L που θα δεχτουμε
     unsigned int L = ceil(k / 8.0);     // L maps της LSH
     unsigned int K = floor(L *0.625);   // K παραμετρος της LSH
+    bool local_optimal = false;
 
     for (int i = 1 ; i < argc ; i++){
         if (strcmp(argv[i], "-d") == 0 && i + 1 < argc){
@@ -166,7 +151,8 @@ int main(int argc, char const *argv[]) {
 
     if (input_file.empty()){
         std::cout << "Enter input file: ";
-        std::cin >> input_file;
+        std::getline(std::cin, input_file);
+        if (std::cin.fail() || input_file.empty()) exit(-1);
     }
 
     std::cout << "Preprocessing the data..." << std::endl;
@@ -187,31 +173,42 @@ int main(int argc, char const *argv[]) {
     std::cout << "Creating the graph..." << std::endl;
 
     Graph* gr = new Graph(NO_IMAGES);
-
-    for (int i = 0 ; i < NO_IMAGES ; i++){
-        Neibs<int>* lsh = new Neibs<int>(pixels, pixels, DIMENSION, k, i, &dist);
-        lsh_knn(pixels, mm, lsh, w, t, rs, id, i, L, K, M, NO_IMAGES, DIMENSION, true);
-
-        for (int j = 0 ; j < lsh->give_size() ; j++){
-            gr->addEdge(i, lsh->givenn(j));
-        }
-
-        delete lsh;
+    if (method == "GNNS Results"){
+        gnns_construction(pixels, gr, mm, w, t, rs, id, k, L, K, M, NO_IMAGES, DIMENSION, &dist);
+    }
+    else if (method == "MRNG Results"){
+        threaded_mrng(4, gr, pixels, mm, w, t, rs, id, k, L, K, M, NO_IMAGES, DIMENSION, &dist);
     }
 
+    Neibs<int>* navigation_node;
+    if (method == "MRNG Results"){
+        int** centroid = new int*[1];
+        centroid[0] = new int[DIMENSION];
+        for (int i = 0 ; i < DIMENSION ; i++){
+            centroid[0][i] = 0;
+            for (int j = 0 ; j < NO_IMAGES ; j++){
+                centroid[0][i] += pixels[i][j];
+            }
+        }
+        
+        navigation_node = new Neibs<int>(pixels, centroid, DIMENSION, 1, 0, &dist);
+        lsh_knn(centroid, mm, navigation_node, w, t, rs, id, 0, L, K, M, NO_IMAGES, DIMENSION, false);
+    }
     if (query_file.empty()){
         std::cout << "Enter query file: ";
-        std::cin >> query_file;
+        std::getline(std::cin, query_file);
+        if (std::cin.fail() || query_file.empty()) exit(-1);
     }
     if (output_file.empty()){
         std::cout << "Enter output file: ";
-        std::cin >> output_file;
+        std::getline(std::cin, output_file);
+        if (std::cin.fail() || output_file.empty()) exit(-1);
     }
 
     // Create Output file to write
     std::ofstream Output(output_file);
 
-    std::vector<double> timesGNNS;
+    std::vector<double> timesSearch;
     std::vector<double> timesTrue;
     double MAF = -1;
 
@@ -223,31 +220,20 @@ int main(int argc, char const *argv[]) {
         // Read from query file
         int** queries = readfile<int>(query_file, NO_QUERIES, DIMENSION);
 
-        auto startGNNS = std::chrono::high_resolution_clock::now();
+        auto startSearch = std::chrono::high_resolution_clock::now();
 
         int query = rand() % NO_QUERIES;
 
         // Process
-        std::vector<int> S;
-        
-        for (int r = 0 ; r < R ; r++){
-            int y = rand() % NO_IMAGES;
-            for (int t = 0 ; t < T ; t++){
-                std::vector<int>* candidates = gr->get_node_nn(y, E);
-                set_insert(S, candidates);    // S = S U N(Y, E, G)
-                int y_next = min(pixels, queries, query, candidates, DIMENSION, &dist);    // Yt = arg minY∈N(Yt−1,E,G)δ(Y, Q)
-                delete candidates;
-
-                // if (dist(pixels[y], queries[query], 2, DIMENSION) < dist(pixels[y_next], queries[query], 2, DIMENSION)) break;  // Local optimal
-                y = y_next;
-            }
+        Neibs<int>* Search;
+        if (method == "GNNS Results"){
+            Search = gnns_search(gr, pixels, queries, query, N, T, R, E, NO_IMAGES, DIMENSION, local_optimal, &dist);
         }
-        Neibs<int>* gnns = new Neibs<int>(pixels, queries, DIMENSION, N, query, &dist);
-        for (auto it = S.rbegin(); it != S.rend(); it++){
-            gnns->insertionsort_insert(*it);
+        else if (method == "MRNG Results"){
+            Search = search_on_graph(gr, pixels, queries, query, navigation_node, candidate_size, N, NO_IMAGES, DIMENSION, &dist);
         }
 
-        auto stopGNNS = std::chrono::high_resolution_clock::now();
+        auto stopSearch = std::chrono::high_resolution_clock::now();
 
         auto startReal = std::chrono::high_resolution_clock::now();
 
@@ -260,11 +246,11 @@ int main(int argc, char const *argv[]) {
 
         Output << "Query: " << query << std::endl;
         for (int i = 0 ; i < N ; i++){
-            Output << "Nearest neighbor-" << i + 1 << ": " << gnns->givenn(i) << std::endl;
-            Output << "distanceApproximate: " << gnns->givedist(i) << std::endl;
+            Output << "Nearest neighbor-" << i + 1 << ": " << Search->givenn(i) << std::endl;
+            Output << "distanceApproximate: " << Search->givedist(i) << std::endl;
             Output << "distanceTrue: " << real_neighbs->givedist(i) << std::endl;
             if (i == 0){
-                double AF = gnns->givedist(i) / real_neighbs->givedist(i);
+                double AF = Search->givedist(i) / real_neighbs->givedist(i);
                 if (MAF != -1){
                     if (MAF < AF){
                         MAF = AF;
@@ -277,9 +263,9 @@ int main(int argc, char const *argv[]) {
         }
 
         // Calculating total time taken by the program.
-        double durationGNNS = std::chrono::duration_cast<std::chrono::milliseconds>(stopGNNS - startGNNS).count();
-        durationGNNS *= 1e-3;
-        timesGNNS.push_back(durationGNNS);
+        double durationSearch = std::chrono::duration_cast<std::chrono::milliseconds>(stopSearch - startSearch).count();
+        durationSearch *= 1e-3;
+        timesSearch.push_back(durationSearch);
 
         double durationReal = std::chrono::duration_cast<std::chrono::milliseconds>(stopReal - startReal).count();
         durationReal *= 1e-3;
@@ -291,7 +277,7 @@ int main(int argc, char const *argv[]) {
         }
         delete[] queries;
         delete real_neighbs;
-        delete gnns;
+        delete Search;
 
         // Quit or rerun with a different file
         std::cout << "Type quit to stop, type a different query file name to rerun it with or press enter to rerun with the same query file" << std::endl;
@@ -303,12 +289,12 @@ int main(int argc, char const *argv[]) {
     }
 
     // Calculating average time of the algorithm and average real time
-    double averageGNNS = 0.0;
+    double averageSearch = 0.0;
     double averageTrue = 0.0;
-    for (auto it = timesGNNS.begin(); it != timesGNNS.end(); it++){
-        averageGNNS += *it;
+    for (auto it = timesSearch.begin(); it != timesSearch.end(); it++){
+        averageSearch += *it;
     }
-    averageGNNS /= timesGNNS.size();
+    averageSearch /= timesSearch.size();
 
     for (auto it = timesTrue.begin(); it != timesTrue.end(); it++){
         averageTrue += *it;
@@ -316,7 +302,7 @@ int main(int argc, char const *argv[]) {
     averageTrue /= timesTrue.size();
     
     // Printing the average time of the algorithm and the average real time
-    Output << "tAverageApproximate: " << std::fixed << std::setprecision(4) << averageGNNS << " seconds" << std::endl;
+    Output << "tAverageApproximate: " << std::fixed << std::setprecision(4) << averageSearch << " seconds" << std::endl;
     Output << "tAverageTrue: " << std::fixed << std::setprecision(4) << averageTrue << " seconds" << std::endl;
     Output << "MAF: " << std::fixed << std::setprecision(4) <<  MAF << std::endl;
     
