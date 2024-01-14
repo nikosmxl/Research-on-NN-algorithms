@@ -219,7 +219,18 @@ int main(int argc, char const *argv[]){
 
     Output << "clustering_time: " << duration.count() << " seconds" << std::endl;
 
-    // double ss = s(0,NO_IMAGES,number_of_clusters,clustindexforps,centers,pixels,DIMENSION);
+    Output << "Running sillhouette..." << std::endl;
+    auto startsil = std::chrono::high_resolution_clock::now();
+    SillhouetteResults* sr = new SillhouetteResults(number_of_clusters);
+    silhouette(sr, pixels, clusters, number_of_clusters, clustindexforps, NO_IMAGES, DIMENSION, &dist);
+    auto stopsil = std::chrono::high_resolution_clock::now();
+    Output << "the time of sil is: " << std::chrono::duration_cast<std::chrono::minutes>(stopsil - startsil).count() << std::endl;
+    Output << "Silhouette: [";
+    for (int i = 0 ; i < number_of_clusters ; i++){
+        Output << "s" << i + 1 << " = " << sr->get_avg_s(i) << ", ";
+    }
+    Output << "stotal = " << sr->get_avg_stotal();
+    Output << "]" << std::endl;
 
     if (complete){
         std::vector<int>** vects = new std::vector<int>*[number_of_clusters];
@@ -247,65 +258,4 @@ int main(int argc, char const *argv[]){
     delete[] clusters;
 
     return 0;
-}
-
-double s(int v,int no_images,int number_of_clusters,int* clustindexfops,int** centers,int** vects,int DIMENSION){
-
-    int obj = v;
-    double a = 0;
-    int maincluster;
-    int divider = 0;
-    for(int i = 0; i < no_images; i++){
-        if( clustindexfops[i] == clustindexfops[obj] && i != obj ){
-            a += dist(vects[i],vects[obj],2,DIMENSION);
-            maincluster = clustindexfops[obj];
-            divider++;
-        }
-    }
-    if( divider > 0 ){
-        a = a/divider;
-    }
-    
-
-
-    double mindcluster;
-    int neibcluster;
-    int countc = 0;
-    double mm;
-    for(int i = 0; i < number_of_clusters; i++){
-        if( ( mm = dist(centers[i],centers[maincluster],2,DIMENSION) ) != 0 ){
-            countc++;
-            if( countc == 1 ){
-                mindcluster = mm;
-                neibcluster = i;
-            }
-            else{
-                if( mm < mindcluster ){
-                    mindcluster = mm;
-                    neibcluster = i;
-                }
-            }
-        }
-    }
-
-    double b = 0;
-    int divider2 = 0;
-    for(int i = 0; i < no_images; i++){
-        if( clustindexfops[i] == neibcluster ){
-            b += dist(vects[i],vects[obj],2,DIMENSION);
-        }
-    }
-    if( divider > 0 ){
-        b = b/divider;
-    }
-
-
-    if( a < b ){
-        1 - a/b;
-    }
-    if( a > b ){
-        b/a - 1;
-    }
-    return 0;
-
 }

@@ -90,7 +90,6 @@ template<typename T>
 std::set<int, DistComparator<int>>* lsh_knn_mrng(T** p, std::unordered_multimap<int, int>** mm, int** w, double** t, int** rs, long* id, int query, int k, int L, int K, long M, int NO_IMAGES, int DIMENSION, bool skip){
     int countLSH = 0;
     std::set<int, DistComparator<int>>* m = new std::set<int, DistComparator<int>>(DistComparator<int>(p, p, query, DIMENSION));
-    int inserted = 0;
     
     double min = DBL_MAX;
     for(int l = 0; l < L; l++){
@@ -98,27 +97,11 @@ std::set<int, DistComparator<int>>* lsh_knn_mrng(T** p, std::unordered_multimap<
         auto itr = mm[l]->equal_range(key);
         for (auto it = itr.first; it != itr.second; it++) {
             if (skip && query == it->second) continue;  // Useful if we are trying to find knn of the same file as the lsh init happened
-            
-            double currdist = dist(p[it->second], p[query], 2, DIMENSION);
-            if (currdist < min){
-                min = currdist;
-                if (!m->empty()){
-                    delete m;
-                    m = new std::set<int, DistComparator<int>>(DistComparator<int>(p, p, query, DIMENSION));
-                }
-                
-                inserted = 0;
-            }
-            
-            if (currdist == min){
-                m->insert(it->second);
-                if (inserted == k){
-                    auto last = m->rend();
-                    m->erase(*last);
-                }
-                else{
-                    inserted++;
-                }
+
+            m->insert(it->second);
+            if (m->size() > k){
+                auto last = m->rend();
+                m->erase(*last);
             }
             
             countLSH++;
@@ -133,6 +116,75 @@ std::set<int, DistComparator<int>>* lsh_knn_mrng(T** p, std::unordered_multimap<
     }
 
     return m;
+}
+
+template<typename T>
+std::unordered_set<int>* Lp_init(T** pixels, int curr_img, std::set<int, DistComparator<int>>* Rp, int DIM, double (*dist)(int*, int*, int, int)){
+    std::unordered_set<int>* Lp = new std::unordered_set<int>();
+
+    if (Rp->empty()) {
+        // Handle the case where the candidates vector is empty
+        std::cerr << "Error: Empty candidates vector." << std::endl;
+        return NULL;  // Return an error code or handle it appropriately
+    }
+
+    auto curr_it = Rp->begin();
+    if (curr_it == Rp->end()) {
+        // Handle the case where the candidates vector is empty
+        std::cerr << "Error: Empty candidates vector." << std::endl;
+        return NULL;  // Return an error code or handle it appropriately
+    }
+
+    Lp->insert(*curr_it);
+
+    double min_dist = dist(pixels[*curr_it], pixels[curr_img], 2, DIM);
+    curr_it++;
+
+    for (auto it = curr_it; it != Rp->end(); it++) {
+        if (dist(pixels[*it], pixels[curr_img], 2, DIM) > min_dist) {
+            break;
+        }
+        Lp->insert(*it);
+    }
+
+    return Lp;
+}
+
+template <typename T>
+void mrng_optimal(Graph* gr, T** pixels, std::unordered_multimap<int, int>** mm, int** w, double** t, int** rs, long* id, int k, int L, int K, long M, int NO_IMAGES, int DIMENSION, double (*dist)(T *, T *, int, int)){
+    
+    for (int i = 0 ; i < NO_IMAGES ; i++){
+        
+        std::set<int, DistComparator<int>>* Rp = lsh_knn_mrng(pixels, mm, w, t, rs, id, i, k, L, K, M, NO_IMAGES, DIMENSION, true);
+        std::unordered_set<int>* Lp = Lp_init(pixels, i, Rp, DIMENSION, dist);
+        
+        for (auto r : *Rp){
+            bool condition = true;
+            double pr = dist(pixels[i], pixels[r], 2, DIMENSION);
+            for (auto t = Lp->begin() ; t != Lp->end() ; t++){
+                double rt = dist(pixels[r], pixels[*t], 2, DIMENSION);
+                double pt = dist(pixels[i], pixels[*t], 2, DIMENSION);
+                if ((pr > rt) && (pr > pt)){
+                    condition = false;
+                    break;
+                }
+            }
+            if (condition == true){
+                Lp->insert(r);
+                if (Lp->size() > k){
+                    auto last = Lp->end();
+                    Lp->erase(*last);
+                }
+            }
+        }
+        
+        for (auto it = Lp->begin(); it != Lp->end(); it++){
+            gr->addEdge(i, *it);
+        }
+
+        delete Rp;
+        delete Lp;
+    }
 }
 
 template <typename T>

@@ -8,12 +8,15 @@
 #include "cube_func.h"
 
 int main(int argc, char const *argv[]){
-    std::string input_file;
+    std::string input_file = "input.dat";
     std::string output_file;
-    std::string query_file;
+    std::string query_file = "query.dat";
+    std::string encoded_input_file;
+    std::string encoded_query_file;
     const int NO_QUERIES = 10;
     const int NO_IMAGES = 60000;
     const int DIMENSION = 784;
+    const int LATENT_DIMENSION = 10;
     const int K = 4;
     const int L = 5;
     int M = 10;
@@ -24,10 +27,10 @@ int main(int argc, char const *argv[]){
 
     for (int i = 1 ; i < argc ; i++){
         if (strcmp(argv[i], "-d") == 0 && i + 1 < argc){
-            input_file = argv[i + 1];
+            encoded_input_file = argv[i + 1];
         }
         else if (strcmp(argv[i], "-q") == 0 && i + 1 < argc){
-            query_file = argv[i + 1];
+            encoded_query_file = argv[i + 1];
         }
         else if (strcmp(argv[i], "-k") == 0 && i + 1 < argc){
             dt = atoi(argv[i + 1]);
@@ -49,15 +52,21 @@ int main(int argc, char const *argv[]){
         }
     }
 
-    if (input_file.empty()){
+    if (encoded_input_file.empty()){
         std::cout << "Enter input file: ";
-        std::cin >> input_file;
+        std::cin >> encoded_input_file;
     }
 
     std::cout << "Preprocessing the data..." << std::endl;
 
     // Pixel array
     int** pixels = readfile<int>(input_file, NO_IMAGES, DIMENSION);
+
+    // Encoded pixel array
+    int** encoded_pixels = readfile<int>(encoded_input_file, NO_IMAGES, LATENT_DIMENSION);
+
+    // Pixel array
+    int** queries = readfile<int>(query_file, NO_QUERIES, DIMENSION);
 
     srand(time(NULL));
 
@@ -73,9 +82,9 @@ int main(int argc, char const *argv[]){
         }
     }
 
-    if (query_file.empty()){
+    if (encoded_query_file.empty()){
         std::cout << "Enter query file: ";
-        std::cin >> query_file;
+        std::cin >> encoded_query_file;
     }
     if (output_file.empty()){
         std::cout << "Enter output file: ";
@@ -86,7 +95,7 @@ int main(int argc, char const *argv[]){
     std::unordered_multimap<long, int> hypercube; // empty multimap container
 
     for (int i = 0 ; i < NO_IMAGES ; i++){
-        preprocess_cube(pixels, hypervalues, hypercube, w, t, i, L, K, dt, DIMENSION);
+        preprocess_cube(encoded_pixels, hypervalues, hypercube, w, t, i, L, K, dt, LATENT_DIMENSION);
     }
 
     // Create Output file to write
@@ -96,23 +105,23 @@ int main(int argc, char const *argv[]){
         std::cout << "Processing the data..." << std::endl;
 
         // Read from query file
-        int** queries = readfile<int>(query_file, NO_QUERIES, DIMENSION);
+        int** encoded_queries = readfile<int>(encoded_query_file, NO_QUERIES, LATENT_DIMENSION);
 
         auto startCube = std::chrono::high_resolution_clock::now();
         
         int query = rand() % NO_QUERIES;
 
-        long query_key = query_key_init(queries[query], hypervalues, w, t, dt, K, L, DIMENSION);
+        long query_key = query_key_init(encoded_queries[query], hypervalues, w, t, dt, K, L, LATENT_DIMENSION);
         
         // Hypercube knn
-        Neibs<int>* cube_neibs = new Neibs<int>(pixels, queries, DIMENSION, N, query, &dist);
+        Neibs<int>* encoded_cube_neibs = new Neibs<int>(encoded_pixels, encoded_queries, LATENT_DIMENSION, N, query, &dist);
 
-        cube_knn(cube_neibs, hypervalues, hypercube, query_key, dt, M, probes);
+        cube_knn(encoded_cube_neibs, hypervalues, hypercube, query_key, dt, M, probes);
 
         // Hypercube Range Search
-        Neibs<int>* rangeSearchCube = new Neibs<int>(pixels, queries, DIMENSION, NO_IMAGES, query, &dist);
+        Neibs<int>* encoded_rangeSearchCube = new Neibs<int>(encoded_pixels, encoded_queries, LATENT_DIMENSION, NO_IMAGES, query, &dist);
         
-        cube_rangeSearch(rangeSearchCube, hypervalues, hypercube, query_key, dt, M, probes, pixels, queries, query, DIMENSION, R);
+        cube_rangeSearch(encoded_rangeSearchCube, hypervalues, hypercube, query_key, dt, M, probes, encoded_pixels, encoded_queries, query, LATENT_DIMENSION, R);
 
         auto stopCube = std::chrono::high_resolution_clock::now();
 
@@ -124,6 +133,12 @@ int main(int argc, char const *argv[]){
         }
 
         auto stopReal = std::chrono::high_resolution_clock::now();
+
+        Neibs<int>* cube_neibs = new Neibs<int>(pixels, queries, DIMENSION, N, query, &dist);
+
+        for (int i = 0 ; i < N ; i++){
+            cube_neibs->insertionsort_insert(encoded_cube_neibs->givenn(i));
+        }
 
         Output << "Query: " << query << std::endl;
 
@@ -139,28 +154,50 @@ int main(int argc, char const *argv[]){
         Output << "tCube: " << durationCube.count() << " milliseconds" << std::endl;
         Output << "tTrue: " << durationReal.count() << " milliseconds" << std::endl;
 
-        int rangecount = rangeSearchCube->give_size();
+        Neibs<int>* rangeSearchCube = new Neibs<int>(pixels, queries, DIMENSION, NO_IMAGES, query, &dist);
+        int rangecount = encoded_rangeSearchCube->give_size();
+
+        for (int i = 0 ; i < rangecount ; i++){
+            rangeSearchCube->insertionsort_insert(encoded_rangeSearchCube->givenn(i));
+        }
+
         Output << "R-near neighbors: " << rangecount << std::endl;
         for (int i = 0 ; i < rangecount ; i++){
             Output << rangeSearchCube->givenn(i) << std::endl;
         }
 
         delete cube_neibs;
+        delete encoded_cube_neibs;
         delete rangeSearchCube;
+        delete encoded_rangeSearchCube;
         delete real_neighbs;
 
+        for (int i = 0 ; i < NO_QUERIES ; i++){
+            delete[] encoded_queries[i];
+        }
+        delete[] encoded_queries;
+
         std::cout << "Type quit to stop or a different query file name to rerun it with" << std::endl;
-        std::cin >> query_file;
-        if (query_file == "quit") break;
+        std::cin >> encoded_query_file;
+        if (encoded_query_file == "quit") break;
     }
 
     // Close Output file
     Output.close();
+    
     // Deallocations
     for (int i = 0 ; i < NO_IMAGES ; i++){
         delete[] pixels[i];
+        delete[] encoded_pixels[i];
     }
+
+    for (int i = 0 ; i < NO_QUERIES ; i++){
+        delete[] queries[i];
+    }
+
     delete[] pixels;
+    delete[] encoded_pixels;
+    delete[] queries;
 
     for (int i = 0 ; i < L ; i++){
         delete[] w[i];
