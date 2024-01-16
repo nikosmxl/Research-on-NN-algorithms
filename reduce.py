@@ -20,36 +20,38 @@ def read_mnist_images(file_path):
 
 def build_autoencoder(x, y, inChannel, num_filters, filter_size, num_layers, latent_dimension):
     autoencoder = models.Sequential()
+    act_func = 'relu'
+    last_act_func = 'sigmoid'
 
     # Encoder
     current_filters = num_filters
 
     for _ in range(num_layers - 1):
-        autoencoder.add(layers.Conv2D(current_filters, kernel_size=(filter_size, filter_size), activation='relu', padding='same'))
+        autoencoder.add(layers.Conv2D(current_filters, kernel_size=(filter_size, filter_size), activation=act_func, padding='same'))
         autoencoder.add(layers.MaxPooling2D((2, 2), padding='same'))
 
         # Double the number of filters for the next layer
         current_filters *= 2
 
-    autoencoder.add(layers.Conv2D(current_filters, kernel_size=(filter_size, filter_size), activation='relu', padding='same'))
+    autoencoder.add(layers.Conv2D(current_filters, kernel_size=(filter_size, filter_size), activation=act_func, padding='same'))
 
     encoder_output_shape = (x // 2**(num_layers - 1), y // 2**(num_layers - 1), current_filters)
 
     autoencoder.add(layers.Flatten())
-    autoencoder.add(layers.Dense(latent_dimension, activation='relu'))
+    autoencoder.add(layers.Dense(latent_dimension, activation=act_func))
 
     # Decoder
-    autoencoder.add(layers.Dense(np.prod(encoder_output_shape), activation='relu'))
+    autoencoder.add(layers.Dense(np.prod(encoder_output_shape), activation=act_func))
     autoencoder.add(layers.Reshape(encoder_output_shape))
 
     for _ in range(num_layers - 1):
-        autoencoder.add(layers.Conv2D(current_filters, kernel_size=(filter_size, filter_size), activation='relu', padding='same'))
+        autoencoder.add(layers.Conv2D(current_filters, kernel_size=(filter_size, filter_size), activation=act_func, padding='same'))
         autoencoder.add(layers.UpSampling2D((2, 2)))
 
         # Halve the number of filters for the next layer
         current_filters //= 2
 
-    autoencoder.add(layers.Conv2D(1, kernel_size=(filter_size, filter_size), activation='relu', padding='same'))
+    autoencoder.add(layers.Conv2D(1, kernel_size=(filter_size, filter_size), activation=last_act_func, padding='same'))
 
     return autoencoder
 
@@ -57,7 +59,7 @@ def save_encoded_data(encoder, images, output_file):
     encoded_data = encoder.predict(images)
     encoded_data_int = (encoded_data * 255).astype(np.uint8)
 
-    # Write to a binary file with a custom header
+    # Write to a binary file with a custom header which our read functions ignore
     header = 'arbitrary words'.ljust(16, '\x00').encode('utf-8')
 
     with open(output_file, 'wb') as f:
@@ -84,7 +86,7 @@ def main():
     x, y = input_data.shape[1:]
     inChannel = 1
 
-    # Normalize pixel values to be between 0 and 1
+    # Rescale pixel values to be in [0,1]
     input_data = input_data.astype('float32') / 255.0
     query_data = query_data.astype('float32') / 255.0
 
@@ -115,6 +117,10 @@ def main():
                     batch_size=batch_size,
                     shuffle=True,
                     validation_data=(x_val, x_val))
+    
+    # Evaluate the autoencoder on the validation set
+    evaluation_loss = autoencoder.evaluate(x_val, x_val)
+    print(f'Validation Loss: {evaluation_loss}')
 
     # Extract the latent representations using the encoder part
     encoder = models.Sequential()
@@ -122,10 +128,10 @@ def main():
     for i in range(2 * num_layers - 1 + 2):  # 2 * num_layers - 1 is the convolutional/maxpooling layers + 2 for flatten and dense layer
         encoder.add(autoencoder.layers[i])
 
-    # Save the encoded data to the output file
+    # Save the encoded dataset to the output file
     save_encoded_data(encoder, input_data, args.output_dataset_file)
 
-    # Save the encoded data to the output file
+    # Save the encoded queryset to the output file
     save_encoded_data(encoder, query_data, args.output_query_file)
 
 if __name__ == "__main__":

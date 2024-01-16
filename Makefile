@@ -49,4 +49,4 @@ cluster_func.o : cluster_func.cpp cluster_func.h
 
 .PHONY: clean //necessary in case file with name clean exists
 clean:
-	rm -f *.o lsh cube
+	rm -f *.o lsh cube cluster graph_search

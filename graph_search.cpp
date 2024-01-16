@@ -115,7 +115,7 @@ int main(int argc, char const *argv[]) {
         // threaded_mrng(4, gr, encoded_pixels, mm, w, t, rs, id, k, L, K, M, NO_IMAGES, LATENT_DIMENSION, &dist);
         mrng_optimal(gr, encoded_pixels, mm, w, t, rs, id, k, L, K, M, NO_IMAGES, LATENT_DIMENSION, &dist);
     }
-    std::cout << "EDW " << std::endl;
+    
     // Calculating navigation node in case it is MRNG method
     Neibs<int>* navigation_node;
     if (method == "MRNG Results"){
@@ -124,7 +124,7 @@ int main(int argc, char const *argv[]) {
         for (int i = 0 ; i < LATENT_DIMENSION ; i++){
             centroid[0][i] = 0;
             for (int j = 0 ; j < NO_IMAGES ; j++){
-                centroid[0][i] += encoded_pixels[i][j];
+                centroid[0][i] += encoded_pixels[j][i];
             }
             int avg = round(centroid[0][i] / (double)NO_IMAGES);
             centroid[0][i] = avg;
@@ -133,7 +133,7 @@ int main(int argc, char const *argv[]) {
         navigation_node = new Neibs<int>(encoded_pixels, centroid, LATENT_DIMENSION, 1, 0, &dist);
         lsh_knn(centroid, mm, navigation_node, w, t, rs, id, 0, L, K, M, NO_IMAGES, LATENT_DIMENSION, false);
     }
-
+    
     // If query file is not given
     if (encoded_query_file.empty()){
         std::cout << "Enter query file: ";
@@ -156,7 +156,7 @@ int main(int argc, char const *argv[]) {
     double AAF = 0;
 
     Output << method << std::endl;
-
+    
     while (1){
         std::cout << "Processing the data..." << std::endl;
         
